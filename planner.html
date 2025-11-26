@@ -28,20 +28,29 @@ async function callNetlifyFunction(path, data) {
 
 /* Check session at load using a protected Netlify function (optional) */
 async function enforceLogin() {
-  const userSession = JSON.parse(localStorage.getItem('userSession'));
+  try {
+    // Retrieve the stored user session from localStorage
+    const userSession = localStorage.getItem('userSession');
+    const sessionToken = localStorage.getItem('sessionToken');
 
-  if (!userSession) {
-    // If no session exists, redirect to login page
+    if (!userSession || !sessionToken) {
+      // No session token, redirect to login page
+      window.location.href = "index.html";
+      return;
+    }
+
+    CURRENT_USER = JSON.parse(userSession);
+    document.getElementById("userEmail").textContent = CURRENT_USER.email;
+
+    // Optionally, you can verify the session with Supabase here if needed.
+  } catch (err) {
+    console.error("Session error:", err);
     window.location.href = "index.html";
-  } else {
-    // Set the user email on the page (or whatever user info you need)
-    document.getElementById("userEmail").textContent = userSession.email;
   }
 }
 
-// Call enforceLogin on page load
+// Run on page load
 enforceLogin();
-
 </script>
 
 <style>
@@ -1071,5 +1080,6 @@ updateExportButtonState();
 
 </body>
 </html>
+
 
 

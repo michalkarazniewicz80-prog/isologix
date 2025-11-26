@@ -1,4 +1,5 @@
 [build]
-  publish = "public"  # Directory where your static HTML files are located
+  publish = "/"  # Root directory where your HTML files are located
   functions = "netlify/functions"  # Directory where your serverless functions are located
   command = ""  # Skip npm build step
+

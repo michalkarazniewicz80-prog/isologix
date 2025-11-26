@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Baseline Isolation Selection Tool — Updated (Print/PDF)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+:root{
+  --green:#22C55E;
+  --amber:#F59E0B;
+  --red:#EF4444;
+  --ink:#1f2937;
+  --grid:#CBD5E1;
+  --head-bg:#1F4E79;
+  --head-fg:#FFFFFF;
+  --bg:#FFFFFF;
+  --muted:#6b7280;
+  --font:"Segoe UI", Roboto, Arial, sans-serif;
+  --focus:#2563eb;
+}
+
+/* ---------- Base Body ---------- */
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ---------- Headings ---------- */
+h1 { font-size: 1.3rem; margin: 0 0 16px; text-align:center; color:var(--head-bg);}
+h2 { margin:0; font-size:1rem; padding:10px 12px; background:var(--head-bg); color:var(--head-fg); display:flex; align-items:center; justify-content:space-between; border-radius:8px 8px 0 0;}
+
+/* ---------- Layout ---------- */
+.layout { display:grid; gap:16px; }
+.grid { display:grid; gap:12px; }
+.two { grid-template-columns:repeat(2,minmax(240px,1fr)); }
+.three { grid-template-columns:repeat(3,minmax(220px,1fr)); }
+
+/* ---------- Panels ---------- */
+.panel { background:#fff; border:1px solid var(--grid); border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.panel .body { padding:12px; }
+
+/* ---------- Fields ---------- */
+.field { display:flex; flex-direction:column; gap:6px; }
+label { font-weight:600; }
+input[type=text], input[type=date], textarea, select {
+  padding:9px 10px;
+  border:1px solid var(--grid);
+  border-radius:6px;
+  background:#fff;
+  color:inherit;
+  font:inherit;
+}
+textarea { min-height:84px; }
+select:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline:2px solid var(--focus);
+  outline-offset:2px;
+}
+
+/* ---------- Actions / Buttons ---------- */
+.actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+.actions .spacer { flex:1 1 auto; }
+button {
+  appearance:none;
+  border:1px solid var(--head-bg);
+  background:var(--head-bg);
+  color:var(--head-fg);
+  padding:9px 14px;
+  border-radius:6px;
+  font-weight:600;
+  cursor:pointer;
+}
+button.secondary { border-color:#cbd5e1; background:#f8fafc; color:#0f172a; }
+
+/* ---------- Badges / Pills ---------- */
+.badge { display:inline-flex; align-items:center; gap:8px; padding:4px 10px; border-radius:999px; border:1px solid #00000026; background:#fff; font-weight:600; }
+.dot { width:10px; height:10px; border-radius:50%; }
+.pill { display:inline-block; padding:2px 8px; border-radius:999px; font-weight:700; color:#fff; }
+.pill.green{background:var(--green);}
+.pill.amber{background:var(--amber);}
+.pill.red{background:var(--red);}
+
+/* ---------- Rows / Results ---------- */
+.rows { display:grid; gap:10px; }
+.row { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:1px dashed var(--grid); border-radius:8px; background:#fff; }
+.row .label { font-weight:600; }
+.row .value { display:flex; align-items:center; gap:10px; }
+.muted { color:var(--muted); }
+.req::after { content:" *"; color:#b91c1c; font-weight:700; }
+
+/* ---------- Banner ---------- */
+.banner { display:none; padding:10px 12px; border-radius:6px; border:1px solid #fca5a5; background:#fef2f2; color:#991b1b; }
+
+/* ---------- Tables ---------- */
+table { width:100%; border-collapse:collapse; }
+th, td { border:1px solid var(--grid); padding:6px; vertical-align:top; }
+th { background:#f1f5f9; }
+.table-actions { display:flex; gap:8px; margin-top:8px; }
+
+/* ---------- Legends ---------- */
+.legend-cols { display:grid; grid-template-columns:repeat(2,minmax(240px,1fr)); gap:14px; }
+.legend-block { border:1px solid var(--grid); border-radius:8px; padding:10px; }
+.legend-block h3 { margin:.2rem 0 .5rem; font-size:1rem; }
+.legend-block ul { list-style:none; padding:0; margin:0; }
+.legend-block li { margin:.25rem 0; }
+
+/* ---------- Tooltips ---------- */
+.tooltip { display:inline-block; border-bottom:1px dotted var(--muted); cursor:help; margin-left:6px; color:var(--muted); font-weight:600; }
+.tooltiptext { display:none; position:absolute; background:#fff; border:1px solid var(--grid); padding:8px; border-radius:6px; width:280px; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:20; font-weight:400; }
+.tooltip:hover .tooltiptext { display:block; }
+
+/* ---------- Signature Section ---------- */
+.signature-group {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.75rem;
+  gap: 16px;
+}
+
+.sig-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sig-field input {
+  flex: 0 0 240px;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 0.4rem;
+}
+
+.sig-field input.signed {
+  background: #f0f0f0;
+  color: #555;
+  font-style: italic;
+}
+
+.sig-field button.btn-blue {
+  padding: 0.5rem 0.75rem;
+  background: var(--head-bg);
+  color: var(--head-fg);
+  border: 1px solid var(--head-bg);
+  border-radius: 0.4rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.sig-field button.btn-blue:hover:not(:disabled) {
+  background: #173d5c;
+}
+
+.sig-field button.btn-blue:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width:900px){
+  .three{grid-template-columns:1fr;}
+  .two{grid-template-columns:1fr;}
+  .legend-cols{grid-template-columns:1fr;}
+}
+
+/* ---------- Print ---------- */
+@media print{
+  body{padding:0;}
+  .actions{display:none;}
+  .panel{box-shadow:none; border-color:#e5e7eb;}
+  h1{margin:8px 0;}
+  .row{border:1px solid #e5e7eb;}
+  body > footer{ display: none; }
+}
+</style>
+</head>
+<body>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  /* --- Helper: call Netlify functions --- */
+  async function callNetlifyFunction(path, data = {}) {
+    const res = await fetch(`/.netlify/functions/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return res.json();
+  }
+
+  /* --- Get current user via Netlify session --- */
+  async function getCurrentUser() {
+    const { user, error } = await callNetlifyFunction('get-session');
+    if (error || !user) {
+      alert('Please log in to continue.');
+      window.location.href = 'index.html';
+      return null;
+    }
+    return user;
+  }
+
+  /* --- Sign a field --- */
+  async function signField(fieldId) {
+    const user = await getCurrentUser();
+    if (!user) return;
+
+    const button = document.querySelector(`.sign-btn[data-target="${fieldId}"]`);
+    const requiredRole = button?.getAttribute('data-role');
+
+    const { roles } = await callNetlifyFunction('getRoles', { userId: user.id });
+
+    if (requiredRole && !roles.includes(requiredRole)) {
+      alert('You are not authorized to sign this field.');
+      return;
+    }
+
+    const name = user.user_metadata?.full_name || user.email;
+    const timestamp = new Date().toLocaleString();
+    const field = document.getElementById(fieldId);
+    if (field) {
+      field.value = `Signed by ${name} on ${timestamp}`;
+      field.classList.add('signed');
+    }
+    if (button) button.disabled = true;
+
+    const draftId = localStorage.getItem('currentDraftId');
+    if (!draftId) {
+      alert('Please save draft first.');
+      return;
+    }
+
+    await callNetlifyFunction('saveSignature', {
+      draftId,
+      role: requiredRole,
+      signature: { user_id: user.id, name, email: user.email, timestamp }
+    });
+  }
+
+  /* --- Save draft --- */
+  async function saveDraft() {
+    const user = await getCurrentUser();
+    if (!user) return;
+
+    const formData = {};
+    document.querySelectorAll('input, select, textarea').forEach(el => {
+      if (el.id) formData[el.id] = el.value;
+    });
+
+    const draftName = prompt("Enter a name for this draft:", localStorage.getItem('currentDraftName') || '');
+    if (!draftName) return alert("Draft not saved: name is required.");
+
+    const draftId = localStorage.getItem('currentDraftId');
+
+    await callNetlifyFunction('saveDraft', { draftId, userId: user.id, draftName, formData });
+
+    localStorage.setItem('currentDraftName', draftName);
+    alert('Draft saved successfully!');
+  }
+
+  /* --- Load draft --- */
+  async function loadDraft() {
+    const user = await getCurrentUser();
+    if (!user) return;
+
+    const { drafts } = await callNetlifyFunction('loadDraft', { userId: user.id });
+    if (!drafts?.length) return alert('No saved drafts found.');
+
+    const draftNames = drafts.map(d => d.name).join('\n');
+    const name = prompt(`Select a draft to load by name:\n${draftNames}`);
+    if (!name) return;
+    const draft = drafts.find(d => d.name === name);
+    if (!draft) return alert("Draft not found.");
+
+    localStorage.setItem('currentDraftId', draft.id);
+    localStorage.setItem('currentDraftName', draft.name);
+
+    Object.entries(draft.form_data).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el) el.value = val;
+    });
+
+    alert('Draft loaded successfully.');
+  }
+
+  /* --- Wire buttons --- */
+  document.querySelectorAll('.sign-btn').forEach(btn => {
+    btn.addEventListener('click', () => signField(btn.getAttribute('data-target')));
+  });
+  document.getElementById('saveDraft')?.addEventListener('click', saveDraft);
+  document.getElementById('loadDraft')?.addEventListener('click', loadDraft);
+
+});
+</script>
+
+<h1>Baseline Isolation Selection Tool</h1>
+
+<div class="layout">
+    <!-- Process Inputs -->
+    <section class="panel" aria-labelledby="proc-h">
+      <h2 id="proc-h">Process Inputs</h2>
+      <div class="body grid three">
+        <div class="field"><label for="substance">Substance Category</label>
+          <select id="substance"><option value="" selected disabled>Choose…</option>
+            <option value="1">1 — Very toxic; toxic; carcinogenic; sensitizing</option>
+            <option value="2">2 — Flammables; explosive; steam; pressurised vapour</option>
+            <option value="3">3 — Corrosives; harmful; irritant</option>
+            <option value="4">4 — Flammable liquids stored below their flashpoint after a release</option>
+            <option value="5">5 — Non-hazardous materials</option>
+          </select>
+        </div>
+        <div class="field"><label for="pressure">Working Pressure Band</label>
+          <select id="pressure"><option value="" selected disabled>Choose…</option><option>&lt;10 barg</option><option>10–50 barg</option><option>&gt;50 barg</option></select>
+        </div>
+        <div class="field"><label for="size">Line Size Band</label>
+          <select id="size"><option value="" selected disabled>Choose…</option><option>&lt;2 in</option><option>2–8 in</option><option>&gt;8 in</option></select>
+        </div>
+      </div>
+      <div class="body grid two">
+        <div class="field"><label for="location">Location Factor (L/M/H)</label>
+          <select id="location"><option value="" selected disabled>Choose…</option><option value="H">H — High-risk area (e.g., &gt;10 persons; congested plant; high fire/escalation potential).</option><option value="M">M — Medium-risk area (e.g., 3–10 persons; generally uncongested; moderate escalation potential).</option><option value="L">L — Low-risk area (e.g., remote/open-air; few persons potentially exposed).</option></select>
+        </div>
+        <div class="field"><label for="requestedBaseline">Requested Isolation Standard (if different)</label>
+          <select id="requestedBaseline"><option value="" selected>Same as calculated</option><option value="R">R — Revisit / Risk reduction</option><option value="I">I — Positive isolation</option><option value="II">II — Proved isolation</option><option value="III">III — Non-proved isolation</option></select>
+        </div>
+      </div>
+      <div class="body actions">
+        <button type="button" id="apply">Apply</button>
+        <button type="button" id="reset" class="secondary">Reset</button>
+        <span class="spacer"></span>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section class="panel" aria-labelledby="out-h">
+      <h2 id="out-h">Calculated Results</h2>
+      <div class="body rows" id="results">
+        <div class="row"><span class="label">Calculated Release Factor</span><span class="value"><span class="badge"><span class="dot" id="release-dot"></span><span id="release-text" class="muted">—</span></span></span></div>
+        <div class="row"><span class="label">Location Factor</span><span class="value"><span class="badge"><span class="dot" id="location-dot"></span><span id="location-text" class="muted">—</span></span></span></div>
+        <div class="row"><span class="label">Outcome Factor</span><span class="value"><span class="badge"><span class="dot" id="outcome-dot"></span><span id="outcome-text" class="muted">—</span></span></span></div>
+        <div class="row"><span class="label">Baseline Isolation Standard</span><span class="value"><span class="badge"><span class="dot" id="baseline-dot"></span><span id="baseline-text" class="muted">—</span></span></span></div>
+      </div>
+      <div class="body"><div id="nonConfBanner" class="banner">Baseline is non-conformant with the requested standard. Complete the Risk Assessment below. Export is disabled until mandatory fields are complete.</div></div>
+    </section>
+
+    <!-- Legend (always visible; collapsible) -->
+    <section class="panel" id="legendPanel">
+      <h2>Legend & Guidance <button type="button" id="toggleLegend" class="toggle">Hide</button></h2>
+      <div class="body legend-cols" id="legendBody">
+        <div class="legend-block"><h3>Colour Coding (L/M/H)</h3>
+          <p><span class="pill green">L</span> Low &nbsp; <span class="pill amber">M</span> Medium &nbsp; <span class="pill red">H</span> High</p>
+        </div>
+        <div class="legend-block"><h3>Baseline Isolation (R / I / II / III)</h3>
+          <ul>
+            <li><b>R — Revisit / Risk reduction</b>: additional risk reduction or design change required.</li>
+            <li><b>I — Positive isolation</b>: physical disconnection/blanking (e.g. spade/blank, spool removal).</li>
+            <li><b>II — Proved isolation</b>: double block and bleed with vent/bleed verification.</li>
+            <li><b>III — Non-proved isolation</b>: single valve isolation, effectiveness of the valve's seal can't be verified.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- RA -->
+    <section class="panel" id="raSection" hidden>
+      <h2>Non-Conformant Baseline – Risk Assessment</h2>
+      <div class="body grid two">
+        <div class="field"><label class="req" for="asset">Asset / Area</label><input id="asset" type="text" required></div>
+        <div class="field"><label class="req" for="job">Job / Task ID</label><input id="job" type="text" required></div>
+        <div class="field" style="grid-column:1/-1"><label class="req" for="work">Work Description</label><textarea id="work" required></textarea></div>
+        <div class="field"><label class="req" for="date">Date</label><input id="date" type="date" required></div>
+        <div class="field"><label class="req" for="prepared">Prepared by</label><input id="prepared" type="text" required></div>
+      </div>
+
+      <div class="body"><div class="field"><label class="req" for="deviation">2) Deviation Summary</label><textarea id="deviation" placeholder="Physical constraints, configuration, operational limits…" required></textarea></div></div>
+
+      <div class="body grid two">
+        <div class="field"><label class="req" for="primaryIso">3) Primary Isolation Method
+        </label><input id="primaryIso" type="text" required placeholder="e.g., DBB on XV-123 / spade on 6 in line"></div>
+        <div class="field"><label class="req" for="verify">Verification Method
+            <span class="tooltip">i<span class="tooltiptext">Ensure vents/bleeds are routed to a safe location (flare, safe drain) and confirm zero pressure before work. Consider using pressure gauges and documented venting to confirm isolation.</span></span>
+        </label><input id="verify" type="text" required placeholder="e.g., vent/bleed test to zero"></div>
+        <div class="field" style="grid-column:1/-1"><label for="redundant">Secondary / Redundant Barriers<span class="tooltip">i<span class="tooltiptext">Consider engineered alternatives such as inflatable/twin-tyre pipeline plugs, temporary blind flanges/spades, pipe-freezing, or stopples. Use redundant barriers where possible (e.g., two plugs or plug + blank).</span></span></label><textarea id="redundant"></textarea></div>
+        <div class="field" style="grid-column:1/-1"><label class="req" for="vents">Vent / Bleed / Depressurisation Points</label><textarea id="vents" required></textarea></div>
+        <div class="field" style="grid-column:1/-1"><label class="req" for="loto">Locking / Tagging Controls (LOTO)</label><textarea id="loto" required></textarea></div>
+        <div class="field" style="grid-column:1/-1"><label class="req" for="monitor">Monitoring & Hold Points
+            <span class="tooltip">i<span class="tooltiptext">Specify instrument type (pressure gauge, pressure transmitter, gas detector), monitoring frequency (e.g., every 15/30/60 minutes), alarm setpoints, and who is responsible for the checks.</span></span>
+        </label><textarea id="monitor" required placeholder="e.g., Pressure gauge reading every hour by operator; continuous gas detector monitoring"></textarea></div>
+      </div>
+
+      <div class="body">
+        <h3 style="margin:0 0 8px">4) Task-specific Risk Assessment</h3>
+        <table id="riskTable" aria-label="Risk register">
+          <thead><tr><th style="width:7rem">Step</th><th>Hazard</th><th>Cause</th><th>Consequence</th><th>Existing Safeguards</th><th style="width:8.5rem">Likelihood</th><th style="width:8.5rem">Consequence</th><th style="width:6.5rem">Risk</th><th>Additional Controls</th><th style="width:7.5rem">Residual Risk</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="table-actions">
+          <button type="button" class="secondary" id="addRow">Add Row</button>
+          <button type="button" class="secondary" id="delRow">Delete Last Row</button>
+        </div>
+      </div>
+
+      <div class="body">
+        <h3 style="margin:0 0 8px">5) Temporary Controls Checklist</h3>
+        <table id="chkTable"><thead><tr><th>Control Item</th><th style="width:10rem">Yes / No / N/A</th></tr></thead>
+          <tbody>
+            <tr><td>Isolation map/sketch attached</td><td><select class="yn"><option value="">Select…</option><option>Yes</option><option>No</option><option>N/A</option></select></td></tr>
+            <tr><td class="req">Vents/bleeds verified clear to safe location</td><td><select class="yn reqField"><option value="">Select…</option><option>Yes</option><option>No</option><option>N/A</option></select></td></tr>
+            <tr><td class="req">Zero-energy check documented</td><td><select class="yn reqField"><option value="">Select…</option><option>Yes</option><option>No</option><option>N/A</option></select></td></tr>
+            <tr><td>Backflow prevention / spading considered</td><td><select class="yn"><option value="">Select…</option><option>Yes</option><option>No</option><option>N/A</option></select></td></tr>
+            <tr><td class="req">LOTO plan issued & verified by Operations</td><td><select class="yn reqField"><option value="">Select…</option><option>Yes</option><option>No</option><option>N/A</option></select></td></tr>
+            <tr><td>Fire & explosion implications reviewed</td><td><select class="yn"><option value="">Select…</option><option>Yes</option><option>No</option><option>N/A</option></select></td></tr>
+            <tr><td>SIMOPS reviewed</td><td><select class="yn"><option value="">Select…</option><option>Yes</option><option>No</option><option>N/A</option></select></td></tr>
+            <tr><td>Emergency response arrangements confirmed</td><td><select class="yn"><option value="">Select…</option><option>Yes</option><option>No</option><option>N/A</option></select></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="body"><div class="field"><label class="req" for="alarp">6) ALARP Justification & Timebound Use</label><textarea id="alarp" required placeholder="e.g., Max 8 hrs; escalate after 4 hrs; review daily." title="Specify time limits, escalation triggers, and maximum duration."></textarea></div></div>
+
+      <div class="body grid two">
+        <div class="field"><label class="req" for="prework">7) Pre-work Verification</label><textarea id="prework" required></textarea></div>
+        <div class="field"><label class="req" for="during">During Work Monitoring</label><textarea id="during" required></textarea></div>
+        <div class="field"><label class="req" for="deiso">De-isolation / Re-commissioning checks</label><textarea id="deiso" required></textarea></div>
+        <div class="field"><label for="docs">Documentation in work pack</label><textarea id="docs"></textarea></div>
+      </div>
+
+      <div class="body"><div class="field"><label for="plantModif">Is plant modification planned to restore baseline isolation?</label><select id="plantModif"><option value="" selected>Select…</option><option>Yes</option><option>No</option><option>N/A</option></select></div></div>
+
+        <!-- ---------- Signature Section ---------- -->
+<section class="panel">
+  <h2>Approvals</h2>
+
+  <div class="signature-group">
+    <div class="sig-field">
+      <label class="req" for="psAuth">Isolation Authority</label>
+      <input id="psAuth" type="text" required>
+      <button type="button" class="sign-btn btn-blue" data-target="psAuth" data-role="isolation_authority">Sign</button>
+    </div>
+  </div>
+
+  <div class="signature-group">
+    <div class="sig-field">
+      <label for="hsse">HSSE Approval (if required)</label>
+      <input id="hsse" type="text">
+      <button type="button" class="sign-btn btn-blue" data-target="hsse" data-role="hsse_manager">Sign</button>
+    </div>
+  </div>
+
+  <div class="signature-group">
+    <div class="sig-field">
+      <label class="req" for="contractor">Operations Manager</label>
+      <input id="contractor" type="text" required>
+      <button type="button" class="sign-btn btn-blue" data-target="contractor" data-role="operations_manager">Sign</button>
+    </div>
+  </div>
+</section>
+
+      <div class="body actions">
+        <button type="button" id="saveDraft" class="secondary">Save Draft</button>
+	<button type="button" id="loadDraft" class="secondary">Load Draft</button>
+        <button type="button" id="exportDoc">Print / Save as PDF</button>
+      </div>
+    </section>
+  </div>
+
+<script>
+(function(){
+  function $(id){return document.getElementById(id);} 
+  // Toggle legend visibility
+  const toggleBtn = $('toggleLegend');
+  const legendBody = $('legendBody');
+  toggleBtn && toggleBtn.addEventListener('click', ()=> {
+    const hidden = legendBody.style.display === 'none';
+    legendBody.style.display = hidden ? 'grid' : 'none';
+    toggleBtn.textContent = hidden ? 'Hide' : 'Show';
+  });
+
+  // Core calcs and risk table code 
+  const selSub=$('substance'), selP=$('pressure'), selS=$('size'), selLoc=$('location');
+  const tRelease=$('release-text'), dRelease=$('release-dot');
+  const tLocation=$('location-text'), dLocation=$('location-dot');
+  const tOutcome=$('outcome-text'), dOutcome=$('outcome-dot');
+  const tBaseline=$('baseline-text'), dBaseline=$('baseline-dot');
+  const reqBaseline=$('requestedBaseline');
+  const nonConfBanner=$('nonConfBanner');
+  const raSection=$('raSection');
+
+  const GREEN=getVar('--green'), AMBER=getVar('--amber'), RED=getVar('--red');
+  function getVar(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim();}
+
+  const RELEASE_TABLE={'>50 barg':{'>8 in':'H','2–8 in':'H','<2 in':'M'},'10–50 barg':{'>8 in':'H','2–8 in':'M','<2 in':'L'},'<10 barg':{'>8 in':'M','2–8 in':'L','<2 in':'L'}}; 
+  const OUTCOME_TABLE={'H|H':'A','H|M':'A','H|L':'B','M|H':'A','M|M':'B','M|L':'C','L|H':'B','L|M':'C','L|L':'C'};
+  const ISOLATION_TABLE={1:{'A':'I','B':'I','C':'II'},2:{'A':'I','B':'II','C':'II'},3:{'A':'I','B':'II','C':'III'},4:{'A':'II','B':'II','C':'III'},5:{'A':'II','B':'III','C':'III'}};
+
+  function colourLMH(v){return v==='L'?GREEN:v==='M'?AMBER:v==='H'?RED:'#e5e7eb'}
+  function setBadge(textEl, dotEl, value, colour){ textEl.textContent = value || '—'; textEl.classList.toggle('muted', !value); dotEl.style.background = colour || '#e5e7eb'; }
+  function calcRelease(){ const p=selP.value,s=selS.value; if(!p||!s) return null; return (RELEASE_TABLE[p]||{})[s] || null; }
+  function calcOutcome(release, location){ if(!release||!location) return null; return OUTCOME_TABLE[`${location}|${release}`] || null; }
+  function calcIsolation(substance, outcome){ if(!substance||!outcome) return null; const row=ISOLATION_TABLE[Number(substance)]; return row? row[outcome] || null : null; }
+
+  // Risk table helpers (updated to include residual dropdown)
+  const riskTableBody = document.querySelector('#riskTable tbody');
+  function riskColour(l,c){ const map={ 'L|L':'green','L|M':'amber','L|H':'red','M|L':'amber','M|M':'amber','M|H':'red','H|L':'amber','H|M':'red','H|H':'red' }; return map[`${l}|${c}`]||'grey'; }
+  function wireRow(tr){
+    const lik = tr.querySelector('.lik'); const con = tr.querySelector('.con'); const pill = tr.querySelector('.pill');
+    function update(){ const l=lik.value, c=con.value; if(!l||!c){ pill.style.display='none'; return;} const col=riskColour(l,c); pill.style.display='inline-block'; pill.textContent=(col==='green'?'LOW':col==='amber'?'MED':'HIGH'); pill.className=`pill ${col}`; }
+    lik.addEventListener('change', update); con.addEventListener('change', update);
+  }
+  function addRiskRow(){
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td contenteditable></td><td contenteditable></td><td contenteditable></td><td contenteditable></td><td contenteditable></td>'+
+                   '<td><select class="lik"><option value="">—</option><option>L</option><option>M</option><option>H</option></select></td>'+
+                   '<td><select class="con"><option value="">—</option><option>L</option><option>M</option><option>H</option></select></td>'+
+                   '<td class="risk"><span class="pill" style="display:none"></span></td>'+
+                   '<td contenteditable></td>'+
+                   '<td><select class="residual"><option value="">—</option><option value="L">LOW</option><option value="M">MED</option><option value="H">HIGH</option></select></td>';
+    riskTableBody.appendChild(tr); wireRow(tr);
+  }
+  function ensureAtLeastOneRow(){ if(riskTableBody.children.length===0) addRiskRow(); }
+
+  // Wire buttons
+  let raWired=false;
+  function wireRAButtons(){
+    if(raWired) return; raWired=true;
+    const addBtn = document.getElementById('addRow');
+    const delBtn = document.getElementById('delRow');
+    addBtn?.addEventListener('click', addRiskRow);
+    delBtn?.addEventListener('click', ()=>{ const rows=riskTableBody.querySelectorAll('tr'); if(rows.length>0) rows[rows.length-1].remove(); });
+    ensureAtLeastOneRow();
+  }
+
+
+  // Validation
+  const mandatoryIds=['asset','job','work','date','prepared','deviation','primaryIso','verify','vents','loto','monitor','alarp','prework','during','deiso','psAuth','contractor'];
+  function validateMandatory(){
+    let ok=true;
+    mandatoryIds.forEach(id=>{ const el=$(id); if(!el||raSection.hidden) return; if(el instanceof HTMLSelectElement || el instanceof HTMLInputElement){ if(!el.value) ok=false; } else if(el instanceof HTMLTextAreaElement){ if(!el.value) ok=false;} });
+    const exportBtn = document.getElementById('exportDoc');
+    if(exportBtn) exportBtn.disabled = !ok;
+    return ok;
+  }
+
+  // Export / print — open printable HTML and call print (includes residual select values)
+  function buildExportHtml(){
+    const risksHtml = Array.from(riskTableBody.querySelectorAll('tr')).map(tr=>{
+      const cells=tr.querySelectorAll('td');
+      const L=tr.querySelector('.lik')?.value||'';
+      const C=tr.querySelector('.con')?.value||'';
+      const risk=tr.querySelector('.pill')?.textContent||'';
+      const residual = tr.querySelector('.residual')?.value || '';
+      return `<tr><td>${cells[0].innerText||''}</td><td>${cells[1].innerText||''}</td><td>${cells[2].innerText||''}</td><td>${cells[3].innerText||''}</td><td>${cells[4].innerText||''}</td><td>${L}</td><td>${C}</td><td>${risk}</td><td>${cells[8].innerText||''}</td><td>${residual}</td></tr>`;
+    }).join('');
+    const chkRows = Array.from(document.querySelectorAll('#chkTable tbody tr')).map(tr=>`<tr><td>${tr.children[0].innerText}</td><td>${tr.querySelector('select').value}</td></tr>`).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset='utf-8'><title>Non-Conformant Baseline Risk Assessment</title><style>body{font-family:Arial,Helvetica,sans-serif;padding:18px;color:#111}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f3f4f6}</style></head><body>`+
+      `<h2>Non-Conformant Baseline Risk Assessment</h2>`+
+      `<h3>Context</h3><table><tr><td><b>Asset / Area</b></td><td>${$('asset')?.value||''}</td><td><b>Job / Task ID</b></td><td>${$('job')?.value||''}</td></tr>`+
+      `<tr><td><b>Work Description</b></td><td colspan='3'>${$('work')?.value||''}</td></tr>`+
+      `<tr><td><b>Date</b></td><td>${$('date')?.value||''}</td><td><b>Prepared by</b></td><td>${$('prepared')?.value||''}</td></tr></table>`+
+      `<h3>Deviation Summary</h3><p>${$('deviation')?.value||''}</p>`+
+      `<h3>Proposed Alternative</h3><table>`+
+      `<tr><td><b>Primary Isolation Method</b></td><td>${$('primaryIso')?.value||''}</td><td><b>Verification Method</b></td><td>${$('verify')?.value||''}</td></tr>`+
+      `<tr><td><b>Secondary / Redundant Barriers</b></td><td colspan='3'>${$('redundant')?.value||''}</td></tr>`+
+      `<tr><td><b>Vent / Bleed / Depressurisation Points</b></td><td colspan='3'>${$('vents')?.value||''}</td></tr>`+
+      `<tr><td><b>LOTO Controls</b></td><td colspan='3'>${$('loto')?.value||''}</td></tr>`+
+      `<tr><td><b>Monitoring & Hold Points</b></td><td colspan='3'>${$('monitor')?.value||''}</td></tr></table>`+
+      `<h3>Risk Assessment</h3><table><tr><th>Step</th><th>Hazard</th><th>Cause</th><th>Consequence</th><th>Existing Safeguards</th><th>Likelihood</th><th>Consequence</th><th>Risk</th><th>Additional Controls</th><th>Residual Risk</th></tr>${risksHtml}</table>`+
+      `<h3>Temporary Controls Checklist</h3><table><tr><th>Control Item</th><th>Yes/No/N/A</th></tr>${chkRows}</table>`+
+      `<h3>ALARP Justification & Timebound Use</h3><p>${$('alarp')?.value||''}</p>`+
+      `<h3>Validation & Monitoring</h3><table>`+
+      `<tr><td><b>Pre-work Verification</b></td><td>${$('prework')?.value||''}</td></tr>`+
+      `<tr><td><b>During Work Monitoring</b></td><td>${$('during')?.value||''}</td></tr>`+
+      `<tr><td><b>De-isolation / Re-commissioning checks</b></td><td>${$('deiso')?.value||''}</td></tr>`+
+      `<tr><td><b>Documentation in work pack</b></td><td>${$('docs')?.value||''}</td></tr></table>`+
+      `<h3>Approvals</h3><table><tr><td><b>Isolation Authority</b></td><td>${$('psAuth')?.value||''}</td><td><b>HSSE Approval</b></td><td>${$('hsse')?.value||''}</td></tr><tr><td><b>Operations Manager</b></td><td>${$('contractor')?.value||''}</td></tr></table>`+
+      `<p><i>Note: This form is for temporary deviation from the baseline isolation determined by the tool and must be authorised.</i></p>`+
+      `<footer style="margin-top:20px;padding:14px;border-top:1px solid #ccc;text-align:center;font-size:0.9rem;color:#555;">`+
+      `This tool assists decision-making and risk evaluation in line with HSG253 and API best practices.<br>`+
+      `It does not replace the judgment or authority of a competent person.<br>`+
+      `© 2025 IsoLogix – All Rights Reserved.<br>`+
+      `v1.3 – October 2025</footer>`+
+      `</body></html>`;
+    return html;
+  }
+
+  document.getElementById('exportDoc').addEventListener('click', ()=>{
+    if(!validateMandatory()){ alert('Please complete mandatory fields.'); return; }
+    const html = buildExportHtml();
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    // Give the browser a moment to render then trigger print
+    setTimeout(()=>{ w.focus(); w.print(); }, 250);
+  });
+
+
+  // Initial setup functions (note: some helper functions are re-declared to be self-contained)
+  function colourLMH(v){return v==='L'?getVar('--green'):v==='M'?getVar('--amber'):v==='H'?getVar('--red'):'#e5e7eb'}
+  function setBadge(textEl, dotEl, value, colour){ if(textEl) textEl.textContent = value || '—'; if(dotEl) dotEl.style.background = colour || '#e5e7eb'; }
+  function calcRelease(){ try{ const p=selP.value,s=selS.value; if(!p||!s) return null; return (RELEASE_TABLE[p]||{})[s] || null;}catch(e){return null}}
+  function calcOutcome(release, location){ try{ if(!release||!location) return null; return OUTCOME_TABLE[`${location}|${release}`] || null;}catch(e){return null}}
+  function calcIsolation(substance, outcome){ try{ if(!substance||!outcome) return null; const row=ISOLATION_TABLE[Number(substance)]; return row? row[outcome] || null : null;}catch(e){return null}}
+
+  function apply(){
+    try{
+      const rel=calcRelease(); const loc=selLoc.value||null; const out=calcOutcome(rel,loc); const base=calcIsolation(selSub.value,out);
+      setBadge(tRelease,dRelease,rel,colourLMH(rel)); setBadge(tLocation,dLocation,loc,colourLMH(loc)); setBadge(tOutcome,dOutcome,out,'#e5e7eb'); setBadge(tBaseline,dBaseline,base,'#e5e7eb');
+      const requested=reqBaseline.value||''; const nonConformant=requested && base && (requested!==base);
+      nonConfBanner.style.display=nonConformant?'block':'none'; raSection.hidden=!nonConformant;
+      if(nonConformant){ wireRAButtons(); ensureAtLeastOneRow(); }
+      validateMandatory();
+    }catch(e){ console.error(e); }
+  }
+
+  document.getElementById('apply').addEventListener('click', apply);
+  document.getElementById('reset').addEventListener('click', ()=>{ [selSub,selP,selS,selLoc,reqBaseline].forEach(s=>{ if(s) s.selectedIndex=0}); apply(); });
+  ;[selSub,selP,selS,selLoc,reqBaseline].forEach(s=> s && s.addEventListener('change', apply));
+  document.querySelectorAll('#raSection input, #raSection textarea, #raSection select').forEach(el=> el.addEventListener('input', validateMandatory));
+
+
+// Wire buttons
+document.getElementById('saveDraft').addEventListener('click', saveDraft);
+document.getElementById('loadDraft').addEventListener('click', loadDraft);
+document.querySelectorAll('.sign-btn').forEach(btn => {
+  btn.addEventListener('click', () => signField(btn.getAttribute('data-target')));
+});
+
+  // Initialize
+  apply();
+})();
+</script>
+
+<footer style="margin-top:20px;padding:14px;border-top:1px solid #ccc;text-align:center;font-size:0.9rem;color:#555;">
+  This tool assists decision-making and risk evaluation in line with HSG253 and API best practices.<br>
+  It does not replace the judgment or authority of a competent person.<br>
+  © 2025 IsoLogix – All Rights Reserved.<br>
+  v1.3 – November 2025
+</footer>
+
+</body>
+</html>

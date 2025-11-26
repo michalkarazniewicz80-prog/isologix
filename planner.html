@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>IsoLogix — Isolation Planner (Supabase)</title>
+
+<!-- Libraries -->
+<script src="https://unpkg.com/konva@8.4.2/konva.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.5.29/dist/jspdf.plugin.autotable.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.8.162/pdf.min.js"></script>
+
+<script>
+/* ========= AUTH INITIALISATION VIA NETLIFY FUNCTION ========= */
+
+/* Store user globally */
+let CURRENT_USER = null;
+
+/* Helper to call Netlify functions */
+async function callNetlifyFunction(path, data) {
+  const res = await fetch(`/.netlify/functions/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+/* Check session at load using a protected Netlify function (optional) */
+async function enforceLogin() {
+  try {
+    const { user, error } = await callNetlifyFunction("get-session", {}); 
+    // `get-session` is a custom Netlify function that returns the current logged-in user
+    if (error || !user) {
+      window.location.href = "index.html";
+      return;
+    }
+    CURRENT_USER = user;
+    document.getElementById("userEmail").textContent = CURRENT_USER.email;
+  } catch (err) {
+    console.error("Session error:", err);
+    window.location.href = "index.html";
+  }
+}
+
+/* Logout via Netlify function */
+async function doLogout() {
+  try {
+    const { error } = await callNetlifyFunction("logout", {});
+    if (error) console.error("Logout error:", error);
+  } catch (err) {
+    console.error("Logout error:", err);
+  } finally {
+    window.location.href = "index.html";
+  }
+}
+
+/* Run on page load */
+enforceLogin();
+</script>
+
+<style>
+:root { --navy:#0b4a8b; --accent:#0078d7; --light:#e6f2ff; }
+body { font-family:"Segoe UI",Arial,sans-serif; margin:0; background:#fff; color:#111; display:flex; flex-direction:column; min-height:100vh; }
+header { position:sticky; top:0; background:white; border-bottom:3px solid var(--navy); padding:10px; display:flex; flex-direction:column; gap:6px; z-index:200; }
+.toolbar .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+button, select, .file-btn { background: var(--light); border:1px solid var(--accent); padding:6px 10px; border-radius:6px; font-weight:700; color:#053a66; cursor:pointer; font-size:13px; }
+button[disabled]{opacity:0.5;cursor:not-allowed;}
+#symbolSelect{width:160px;}
+#container{width:100%;height:700px;border:1px solid #aaa;background:#fff;cursor:crosshair;}
+table{border-collapse:collapse;width:98%;margin:10px auto;font-size:14px;table-layout:fixed;}
+th,td{border:2px solid #aaa;padding:10px;text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
+th{background:var(--light);color:var(--navy);font-weight:700;}
+input[type=text],select{width:100%;padding:6px;border-radius:6px;border:1px solid #ccc;font-size:13px;}
+.logo{height:60px;margin-left:auto;}
+input[type=file]{display:none;}
+#pointsTable th:first-child,#pointsTable td:first-child,#deisoTable th:first-child,#deisoTable td:first-child{width:40px;text-align:center;}
+.tools-left{display:flex;gap:8px;align-items:center;}
+footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-size:12px;color:#666;border-top:1px solid #ccc;}
+/* Draft modal */
+#draftModal { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; justify-content: center; align-items: center; z-index: 9999; }
+#draftModal.open { display:flex; }
+#draftModalContent { background:#fff; border-radius:8px; padding:20px; width:420px; max-height:80vh; overflow:auto; }
+#draftModalContent h3 { margin-top:0; }
+.draft-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #ddd; gap:8px; }
+.draft-row button { padding:6px 8px; font-size:12px; }
+.small { font-size:12px; color:#666; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="toolbar">
+    <div class="row">
+  <label class="file-btn">Choose File
+    <input id="upload" type="file" accept=".png,.jpg,.jpeg,.pdf">
+  </label>
+
+  <!-- spacer pushes logo + user section to the right -->
+  <div style="flex:1;"></div>
+
+  <!-- USER STATUS + LOGOUT -->
+  <div id="userBox" style="font-size:14px; color:#0b4a8b; font-weight:600; margin-right:15px; display:none;">
+    Logged in as <span id="userEmail"></span>
+  </div>
+
+  <button id="logoutBtn" style="display:none;background:#ffd700;border:1px solid #0b4a8b;color:#0b4a8b;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;">
+    Logout
+  </button>
+
+  <img src="isologix.png" alt="isologix" class="logo">
+</div>
+</div>
+    <div class="row">
+      <div class="tools-left">
+        <button id="exportPDF">Export PDF</button>
+        <button id="undo">Undo</button>
+        <button id="reset">Reset</button>
+        <button id="saveCloud">Save</button>
+        <button id="drafts">Drafts</button>
+        <button id="newProject">New Project</button>
+        <button data-tool="point">Isolation Point</button>
+        <button data-tool="vent">Vent/Drain</button>
+        <button data-tool="spade">Spade/Blank</button>
+        <button data-tool="line">Line</button>
+        <button data-tool="boundary">Boundary</button>
+        <button data-tool="text">Text</button>
+        <button id="baselineBtn">Baseline</button>
+
+        <select id="symbolSelect">
+          <option value="">Insert Symbol</option>
+          <option value="valve">Valve</option>
+          <option value="flange">Flange</option>
+          <option value="hose_connection">Hose Connection</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div id="container"></div>
+
+<h3>Isolation Points</h3>
+<table id="pointsTable">
+  <thead><tr><th>ID</th><th>Description</th><th>Category</th><th>Isolated State</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<h3>De-Isolation Order</h3>
+<table id="deisoTable">
+  <thead><tr><th>ID</th><th>Description</th><th>Category</th><th>De-Isolated State</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<!-- Draft modal structure -->
+<div id="draftModal">
+  <div id="draftModalContent" role="dialog" aria-modal="true">
+    <h3>Saved Drafts</h3>
+    <div id="draftList" aria-live="polite"></div>
+    <div style="text-align:right; margin-top:12px;">
+      <button id="closeModal">Close</button>
+    </div>
+  </div>
+</div>
+
+<footer>© IsoLogix — Isolation Planner</footer>
+
+<script>
+/* ---------------------------
+  Global UI + Konva setup
+   --------------------------- */
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.8.162/pdf.worker.min.js';
+const { jsPDF } = window.jspdf;
+
+const stage = new Konva.Stage({ container:'container', width:window.innerWidth-24, height:700 });
+const mainLayer = new Konva.Layer(); stage.add(mainLayer);
+
+let tool='', activeSymbol='', annotations=[], drawing=false, currentLine=null, currentPts=[], shiftPressed=false, textActive=false, pidImage=null;
+const SYMBOLS = { valve: 'symbols/valve.png', flange: 'symbols/flange.png', hose_connection: 'symbols/hose_connection.png' };
+const BASE_PIN_RADIUS = 6, SYMBOL_SCALE = 0.42;
+let loadingImages = 0;
+function startLoad(){ loadingImages++; updateExportButtonState(); }
+function endLoad(){ loadingImages = Math.max(0, loadingImages-1); updateExportButtonState(); }
+function updateExportButtonState(){ document.getElementById('exportPDF').disabled = loadingImages > 0; }
+function fitImageToStage(imgW,imgH){
+  const stageW = stage.width(), stageH = stage.height();
+  const scale = Math.min(stageW / imgW, stageH / imgH, 1);
+  return { width: imgW * scale, height: imgH * scale, scale };
+}
+
+function defaultCategoryForTool(t){ return t==='point' || t==='vent' ? 'Process' : t==='spade' ? 'Mechanical' : ''; }
+function defaultIsoState(t){ return t==='point' ? 'Closed' : t==='vent' ? 'Open' : t==='spade' ? 'Inserted' : ''; }
+
+function mapIsoToDeiso(isoState, toolType){
+  if(toolType==='vent') return 'Closed';
+  if(toolType==='spade') return 'Removed';
+  if(isoState?.toLowerCase()==='closed') return 'Open';
+  if(isoState?.toLowerCase()==='open') return 'Reconnected';
+  if(isoState?.toLowerCase()==='inserted' || isoState?.toLowerCase()==='spaded') return 'Removed';
+  if(isoState?.toLowerCase()==='blanked' || isoState?.toLowerCase()==='locked') return 'Removed';
+  if(isoState?.toLowerCase()==='removed') return 'Reconnected';
+  return '';
+}
+
+function updateDeisoTable(){
+  const tbody = document.querySelector('#deisoTable tbody');
+  tbody.innerHTML = '';
+  const rows = [...document.querySelectorAll('#pointsTable tbody tr')].map(r=>({
+    id: r.children[0].innerText,
+    desc: r.children[1].querySelector('input')?.value || '',
+    cat: r.children[2].querySelector('select')?.value || '',
+    iso: r.children[3].querySelector('select')?.value || '',
+    tool: r.dataset.tool || ''
+  }));
+  rows.reverse().forEach(row=>{
+    const tr = document.createElement('tr');
+    const autoDe = mapIsoToDeiso(row.iso, row.tool);
+    tr.innerHTML = `
+      <td>${row.id}</td>
+      <td><input type="text" value="${escapeHtml(row.desc)}"></td>
+      <td><select>
+        <option value=""></option>
+        <option ${row.cat==='Process'?'selected':''}>Process</option>
+        <option ${row.cat==='Electrical'?'selected':''}>Electrical</option>
+        <option ${row.cat==='Mechanical'?'selected':''}>Mechanical</option>
+      </select></td>
+      <td><select class="deiso-select">
+        <option value=""></option>
+        <option ${autoDe==='Open'?'selected':''}>Open</option>
+        <option ${autoDe==='Removed'?'selected':''}>Removed</option>
+        <option ${autoDe==='Reconnected'?'selected':''}>Reconnected</option>
+        <option ${autoDe==='Closed'?'selected':''}>Closed</option>
+      </select></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function escapeHtml(s){ return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
+
+/* ---------------------------
+  Tool selection & stage events
+   --------------------------- */
+document.querySelectorAll('button[data-tool]').forEach(b=>{
+  b.addEventListener('click', ()=>{ tool=b.dataset.tool; activeSymbol=''; if(tool==='text') textActive=false; document.getElementById('symbolSelect').value=''; });
+});
+document.getElementById('symbolSelect').addEventListener('change', e=>{ activeSymbol = e.target.value; tool=''; });
+
+window.addEventListener('keydown', e=>{ if(e.key==='Shift') shiftPressed=true; if(e.key==='Enter') finishLine(); });
+window.addEventListener('keyup', e=>{ if(e.key==='Shift') shiftPressed=false; });
+
+function getPointer(){ const p = stage.getPointerPosition(); const s = stage.scaleX(); return { x:(p.x-stage.x())/s, y:(p.y-stage.y())/s }; }
+
+/* Generate stable unique annoId for nodes */
+let _annoCounter = 1;
+function genAnnoId(){
+  return `anno_${Date.now()}_${_annoCounter++}`;
+}
+
+function finishLine(){
+  if(!drawing || !currentLine) return;
+  currentLine.draggable = true;
+  const annoId = genAnnoId();
+  currentLine.setAttr('annoId', annoId);
+  annotations.push({ annoId, type: (tool==='boundary'?'boundary':'line'), shapeType: 'line', points: currentPts.slice(), attrs: currentLine.getAttrs() });
+  drawing=false; currentLine=null; currentPts=[];
+  mainLayer.batchDraw();
+}
+
+stage.on('wheel', e=>{
+  e.evt.preventDefault();
+  const oldScale = stage.scaleX();
+  const pointer = stage.getPointerPosition();
+  const mousePointTo={ x:(pointer.x-stage.x())/oldScale, y:(pointer.y-stage.y())/oldScale };
+  const scaleBy = 1.05;
+  const newScale = e.evt.deltaY>0 ? oldScale/scaleBy : oldScale*scaleBy;
+  stage.scale({ x:newScale, y:newScale });
+  const newPos = { x: pointer.x - mousePointTo.x * newScale, y: pointer.y - mousePointTo.y * newScale };
+  stage.position(newPos);
+  mainLayer.batchDraw();
+});
+
+let isPanning=false, lastPanPos={x:0,y:0};
+stage.on('mousedown touchstart', e=>{
+  if(e.evt.button===1 || e.evt.shiftKey){
+    isPanning=true;
+    const pos = stage.getPointerPosition();
+    lastPanPos={x:pos.x, y:pos.y};
+  }
+});
+stage.on('mouseup touchend', ()=>{ isPanning=false; });
+stage.on('mousemove touchmove', e=>{
+  if(!isPanning) return;
+  const pos = stage.getPointerPosition();
+  const dx = pos.x - lastPanPos.x, dy = pos.y - lastPanPos.y;
+  stage.x(stage.x()+dx); stage.y(stage.y()+dy);
+  lastPanPos = pos;
+  mainLayer.batchDraw();
+});
+
+stage.on('click', ()=>{
+  const pos = getPointer();
+  function getNextPinID(){
+    const rows = document.querySelectorAll('#pointsTable tbody tr');
+    if(rows.length===0) return 1;
+    const ids = Array.from(rows).map(r => parseInt(r.children[0].innerText) || 0);
+    return Math.max(...ids)+1;
+  }
+  if(activeSymbol){ insertSymbol(activeSymbol,pos.x,pos.y); activeSymbol=''; document.getElementById('symbolSelect').value=''; return; }
+  if(tool==='text' && !textActive){ addTextAnnotation(pos.x,pos.y); textActive=true; return; }
+  if(tool==='point' || tool==='vent' || tool==='spade'){
+    const color = tool==='point' ? 'rgba(255,0,0,0.7)' : tool==='vent' ? 'rgba(0,200,0,0.7)' : 'rgba(0,0,255,0.7)';
+    const id = getNextPinID();
+    const c = new Konva.Circle({ x:pos.x, y:pos.y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
+    const t = new Konva.Text({ x:pos.x+8, y:pos.y-12, text:String(id), fontSize:12, fill:'#111', listening:false });
+    c.on('dragmove', ()=> t.position({ x: c.x()+8, y: c.y()-12 }) );
+    // annotate with stable id
+    const annoId = genAnnoId();
+    c.setAttr('annoId', annoId);
+    t.setAttr('annoId', annoId);
+    mainLayer.add(c); mainLayer.add(t);
+    annotations.push({ annoId, id, type:tool, shapeType:'circle', attrs: { x: c.x(), y: c.y(), radius: BASE_PIN_RADIUS, fill: color, stroke:'#111', strokeWidth:1 } });
+    addPointRow(id, tool, c);
+    mainLayer.batchDraw();
+    return;
+  }
+  if(tool==='line' || tool==='boundary'){
+    if(!drawing){
+      drawing=true;
+      currentPts=[pos.x,pos.y];
+      const isLine = (tool==='line');
+      currentLine = new Konva.Line({
+        points: currentPts,
+        stroke: tool==='boundary' ? 'rgba(255,255,0,0.6)' : '#000',
+        strokeWidth: isLine ? 1 : 2,
+        dash: isLine ? [6,4] : [],
+        lineJoin: 'round',
+        lineCap: 'round',
+        draggable:false
+      });
+      mainLayer.add(currentLine);
+    } else {
+      let x = pos.x, y = pos.y;
+      if(shiftPressed && currentPts.length>=2){
+        const lx=currentPts[currentPts.length-2], ly=currentPts[currentPts.length-1];
+        if(Math.abs(x-lx)>Math.abs(y-ly)) y=ly; else x=lx;
+      }
+      currentPts.push(x,y);
+      currentLine.points(currentPts);
+      mainLayer.batchDraw();
+    }
+  }
+});
+
+stage.on('mousemove', ()=>{
+  if(!drawing || !currentLine) return;
+  const pos = getPointer(); let x=pos.x, y=pos.y;
+  if(shiftPressed && currentPts.length>=2){
+    const lx=currentPts[currentPts.length-2], ly=currentPts[currentPts.length-1];
+    if(Math.abs(x-lx)>Math.abs(y-ly)) y=ly; else x=lx;
+  }
+  const pts = currentPts.slice(); pts.push(x,y); currentLine.points(pts); mainLayer.batchDraw();
+});
+
+/* ---------------------------
+  Add point row (table)
+   --------------------------- */
+function addPointRow(id,type,circle){
+  const tbody = document.querySelector('#pointsTable tbody');
+  const tr = document.createElement('tr');
+  tr.dataset.id = id; tr.dataset.tool = type;
+  const preCat = defaultCategoryForTool(type);
+  const defaultIso = defaultIsoState(type);
+  let isoOptions = '';
+  if(type==='vent') isoOptions = `<option selected>Open/Closed</option>`;
+  else isoOptions = `
+    <option value=""></option>
+    <option ${defaultIso==='Closed'?'selected':''}>Closed</option>
+    <option ${defaultIso==='Open'?'selected':''}>Open</option>
+    <option ${defaultIso==='Inserted'?'selected':''}>Inserted</option>
+    <option>Spade Removed</option>
+    <option>Blanked</option>
+    <option>Removed</option>
+    <option>Locked</option>
+  `;
+  tr.innerHTML = `
+    <td>${id}</td>
+    <td><input class="p-desc" type="text" placeholder="${type==='vent'?'Vent/Drain...':type==='spade'?'Spade/Blank...':'Isolation point...'}"></td>
+    <td><select class="p-cat">
+      <option value=""></option>
+      <option ${preCat==='Process'?'selected':''}>Process</option>
+      <option ${preCat==='Electrical'?'selected':''}>Electrical</option>
+      <option ${preCat==='Mechanical'?'selected':''}>Mechanical</option>
+    </select></td>
+    <td><select class="p-iso">${isoOptions}</select></td>
+  `;
+  const descInput = tr.querySelector('.p-desc'), catSelect = tr.querySelector('.p-cat'), isoSelect = tr.querySelector('.p-iso');
+  const startHandler = ()=> startPulse(circle), stopHandler = ()=> stopPulse(circle);
+  [descInput, catSelect, isoSelect].forEach(el => {
+    el.addEventListener('focus', startHandler);
+    el.addEventListener('blur', stopHandler);
+    el.addEventListener('keydown', e => { if(e.key==='Enter'){ stopPulse(circle); el.blur(); } });
+  });
+  descInput.addEventListener('input', updateDeisoTable);
+  catSelect.addEventListener('change', updateDeisoTable);
+  isoSelect.addEventListener('change', updateDeisoTable);
+  tbody.appendChild(tr);
+  updateDeisoTable();
+}
+
+/* Pulse helpers */
+function startPulse(node){
+  if(!node) return;
+  if(node._pulseTween){ node._pulseTween.destroy(); node.scaleX(1); node.scaleY(1); }
+  node._pulseTween = new Konva.Tween({ node, duration:0.6, scaleX:1.6, scaleY:1.6, easing:Konva.Easings.EaseInOut, yoyo:true, repeat:Infinity });
+  node._pulseTween.play();
+}
+function stopPulse(node){ if(!node) return; if(node._pulseTween){ node._pulseTween.destroy(); node._pulseTween = null; } node.scaleX(1); node.scaleY(1); }
+
+/* Text annotation */
+function addTextAnnotation(x,y){
+  const text = new Konva.Text({ x:6, y:6, text:'Double-click to edit', fontSize:14, fill:'#111' });
+  const padding=8;
+  const rect = new Konva.Rect({ x:0, y:0, width:text.width()+padding*2, height:text.height()+padding*2, stroke:'#000', dash:[6,4], strokeWidth:1, cornerRadius:4, fill:'transparent' });
+  const group = new Konva.Group({ x:x, y:y, draggable:true });
+  text.x(padding); text.y(padding); group.add(rect); group.add(text);
+  // assign annoId and push to annotations
+  const annoId = genAnnoId();
+  group.setAttr('annoId', annoId);
+  mainLayer.add(group); group.moveToTop(); mainLayer.batchDraw();
+  group.on('dblclick', ()=>{ const newVal = prompt('Edit annotation text:', text.text()); if(newVal!==null){ text.text(newVal); rect.width(text.width()+padding*2); rect.height(text.height()+padding*2); mainLayer.batchDraw(); } });
+  group.on('dragstart', ()=>group.moveToTop());
+  annotations.push({ annoId, type:'text', shapeType:'group', attrs:{ x:group.x(), y:group.y(), text: text.text() } });
+}
+
+/* Symbols */
+function insertSymbol(name,x,y){
+  const path = SYMBOLS[name];
+  if(!path){ alert('Symbol missing: '+name); return; }
+  startLoad();
+  const img = new Image();
+  img.onload = ()=>{
+    endLoad();
+    const kImg = new Konva.Image({ image: img, x: x-(img.width*SYMBOL_SCALE)/2, y: y-(img.height*SYMBOL_SCALE)/2, width: img.width*SYMBOL_SCALE, height: img.height*SYMBOL_SCALE, draggable:true });
+    kImg.on('dragmove', ()=> mainLayer.batchDraw());
+    kImg.on('dblclick', ()=>{ kImg.rotate(90); mainLayer.batchDraw(); });
+    // anno id
+    const annoId = genAnnoId();
+    kImg.setAttr('annoId', annoId);
+    mainLayer.add(kImg); kImg.moveToTop();
+    annotations.push({ annoId, type:'symbol', shapeType:'image', sub:name, src: path, attrs:{ x:kImg.x(), y:kImg.y(), width:kImg.width(), height:kImg.height(), rotation:kImg.rotation() } });
+    mainLayer.batchDraw();
+  };
+  img.onerror = ()=>{ endLoad(); alert('Failed to load symbol: '+path); };
+  img.src = path;
+}
+
+/* Upload PID image (pdf or image) */
+document.getElementById('upload').addEventListener('change', async (ev)=>{
+  const f = ev.target.files[0]; if(!f) return;
+  const ext = f.name.split('.').pop().toLowerCase();
+  if(pidImage){ pidImage.destroy(); pidImage = null; mainLayer.batchDraw(); }
+  if(ext === 'pdf'){
+    startLoad();
+    try{
+      const ab = await f.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data:ab }).promise;
+      const page = await pdfDoc.getPage(1);
+      const vp = page.getViewport({ scale: 2 });
+      const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      const img = new Image();
+      img.onload = ()=>{ endLoad(); const fit = fitImageToStage(img.width,img.height); pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height }); mainLayer.add(pidImage); pidImage.moveToBottom(); mainLayer.batchDraw(); };
+      img.onerror = ()=>{ endLoad(); alert('Failed to render PDF page'); };
+      img.src = cv.toDataURL('image/png');
+    } catch(err){ endLoad(); console.error(err); alert('Failed to load PDF'); }
+    return;
+  }
+
+  startLoad();
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    const img = new Image();
+    img.onload = ()=>{ endLoad(); const fit = fitImageToStage(img.width,img.height); pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height }); mainLayer.add(pidImage); pidImage.moveToBottom(); mainLayer.batchDraw(); };
+    img.onerror = ()=>{ endLoad(); alert('Failed to load image'); };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(f);
+});
+
+/* Buttons: reset, undo, new project */
+document.getElementById('reset').addEventListener('click', ()=>{ if(!confirm('Clear diagram and tables?')) return; annotations.forEach(a=>{}); // destroy shapes
+  mainLayer.destroyChildren(); annotations=[]; document.querySelector('#pointsTable tbody').innerHTML=''; document.querySelector('#deisoTable tbody').innerHTML=''; pidImage=null; stage.add(mainLayer); mainLayer.batchDraw();
+});
+document.getElementById('undo').addEventListener('click', ()=>{
+  const last = annotations.pop();
+  if(!last) return;
+  // find exact node by annoId
+  if(last.annoId){
+    const nodes = mainLayer.find(node => node.getAttr && node.getAttr('annoId') === last.annoId);
+    nodes.forEach(n => n.destroy());
+  } else {
+    // fallback: best-effort old behaviour (kept for backwards compat)
+    const shapes = mainLayer.getChildren().toArray().reverse();
+    for(const s of shapes){
+      try{
+        const a = s.getAttrs ? s.getAttrs() : null;
+        if(a && last.shapeType === 'circle' && s.className === 'Circle'){ s.destroy(); break; }
+        if(last.shapeType === 'image' && s.className === 'Image'){ s.destroy(); break; }
+        if(last.shapeType === 'line' && s.className === 'Line'){ s.destroy(); break; }
+        if(last.shapeType === 'group' && s.className === 'Group'){ s.destroy(); break; }
+      }catch(e){}
+    }
+  }
+  // If it was a point with ID, remove table row
+  if(last.id) document.querySelector(`#pointsTable tbody tr[data-id="${last.id}"]`)?.remove();
+  updateDeisoTable(); mainLayer.batchDraw();
+});
+document.getElementById('newProject').addEventListener('click', ()=>{ if(!confirm('Start new project?')) return; window.location.reload(); });
+
+/* PDF export (keeps earlier logic) */
+document.getElementById('exportPDF')?.addEventListener('click', async () => {
+  if (!jsPDF) return alert('jsPDF not loaded');
+
+  try {
+    // wait for images to load
+    const maxWaitMs = 4000, pollInterval = 50; let waited = 0;
+    while (loadingImages > 0 && waited < maxWaitMs) { 
+      await new Promise(r => setTimeout(r, pollInterval)); 
+      waited += pollInterval; 
+    }
+    if (loadingImages > 0) return alert('Images are still loading.');
+
+    const format = 'a4';
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 10;
+    const contentWidth = pageWidth - margin * 2;
+    const contentHeight = pageHeight - margin * 2;
+    const titleHeight = 8;
+
+    // -----------------------
+    // Render full PID + annotations to image
+    // -----------------------
+    const exportLayer = new Konva.Layer();
+    
+    // Add PID image full-size
+    if (pidImage) {
+      const pidCopy = pidImage.clone({ x: 0, y: 0 });
+      exportLayer.add(pidCopy);
+    }
+
+    // Add annotations
+    annotations.forEach(a => {
+      if (a.shapeType === 'circle') {
+        exportLayer.add(new Konva.Circle(a.attrs));
+      } else if (a.shapeType === 'line') {
+        exportLayer.add(new Konva.Line({ points: a.points, ...a.attrs }));
+      } else if (a.shapeType === 'image') {
+        if (a.src) {
+          const img = new Image();
+          img.src = a.src;
+          exportLayer.add(new Konva.Image({ image: img, ...a.attrs }));
+        }
+      } else if (a.shapeType === 'group') {
+        exportLayer.add(new Konva.Text({ text: a.attrs.text || '', x: a.attrs.x || 0, y: a.attrs.y || 0, fontSize: 14, fill: '#111' }));
+      }
+    });
+
+    const imgData = exportLayer.toDataURL({ pixelRatio: 4 });
+
+    const img = new Image();
+    img.src = imgData;
+    await new Promise(r => img.onload = r);
+
+    // Scale image to fit PDF page
+    const imgAspect = img.width / img.height;
+    let drawW = contentWidth;
+    let drawH = drawW / imgAspect;
+    if (drawH > contentHeight - titleHeight) {
+      drawH = contentHeight - titleHeight;
+      drawW = drawH * imgAspect;
+    }
+
+    const x = margin + (contentWidth - drawW) / 2;
+    const y = margin + titleHeight;
+
+    pdf.setFontSize(16);
+    pdf.text('PID Diagram', pageWidth / 2, margin + 4, { align: 'center' });
+    pdf.addImage(imgData, 'PNG', x, y, drawW, drawH);
+
+    // -----------------------
+    // Isolation Points table
+    // -----------------------
+    const isoRows = [...document.querySelectorAll('#pointsTable tbody tr')].map(row => [
+      row.children[0]?.innerText || '',
+      row.querySelector('.p-desc')?.value || '',
+      row.querySelector('.p-cat')?.value || '',
+      row.querySelector('.p-iso')?.value || ''
+    ]);
+
+    if (isoRows.length) {
+      pdf.addPage();
+      pdf.setFontSize(16);
+      pdf.text('Isolation Points', pageWidth / 2, margin, { align: 'center' });
+      pdf.autoTable({
+        startY: margin + titleHeight,
+        head: [['ID', 'Description', 'Category', 'Isolated State']],
+        body: isoRows,
+        theme: 'grid',
+        styles: { fontSize: 11, cellPadding: 2 },
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [230, 242, 255], textColor: [11, 74, 139] },
+        columnStyles: { 0: { cellWidth: contentWidth * 0.1 }, 1: { cellWidth: contentWidth * 0.55 }, 2: { cellWidth: contentWidth * 0.15 }, 3: { cellWidth: contentWidth * 0.2 } }
+      });
+    }
+
+    // -----------------------
+    // De-Isolation table
+    // -----------------------
+    const deisoRows = [...document.querySelectorAll('#deisoTable tbody tr')].map(row => [
+      row.children[0]?.innerText || '',
+      row.children[1]?.querySelector('input')?.value || '',
+      row.children[2]?.querySelector('select')?.value || '',
+      row.children[3]?.querySelector('select')?.value || ''
+    ]);
+
+    if (deisoRows.length) {
+      pdf.addPage();
+      pdf.setFontSize(16);
+      pdf.text('De-Isolation Order', pageWidth / 2, margin, { align: 'center' });
+      pdf.autoTable({
+        startY: margin + titleHeight,
+        head: [['ID', 'Description', 'Category', 'De-Isolated State']],
+        body: deisoRows,
+        theme: 'grid',
+        styles: { fontSize: 11, cellPadding: 2 },
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [230, 242, 255], textColor: [11, 74, 139] },
+        columnStyles: { 0: { cellWidth: contentWidth * 0.1 }, 1: { cellWidth: contentWidth * 0.55 }, 2: { cellWidth: contentWidth * 0.15 }, 3: { cellWidth: contentWidth * 0.2 } }
+      });
+    }
+
+    pdf.save('Isolation_Planner.pdf');
+
+  } catch (err) {
+    console.error(err);
+    alert('Failed to export PDF.');
+  }
+});
+
+
+async function requireUserOrThrow(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if (!session) {
+    alert("You must be logged in to save/load drafts.");
+    window.location.href = "index.html";
+    throw new Error("Not logged in");
+  }
+  CURRENT_USER = session.user;
+  return session.user;
+}
+
+/* Build save object with everything needed to restore */
+function buildSaveObject() {
+  // -----------------------
+  // Tables
+  // -----------------------
+  const points = Array.from(document.querySelectorAll('#pointsTable tbody tr')).map(tr => ({
+    id: tr.children[0].innerText,
+    desc: tr.querySelector('.p-desc')?.value || '',
+    cat: tr.querySelector('.p-cat')?.value || '',
+    iso: tr.querySelector('.p-iso')?.value || ''
+  }));
+
+  const deiso = Array.from(document.querySelectorAll('#deisoTable tbody tr')).map(tr => ({
+    id: tr.children[0].innerText,
+    desc: tr.querySelector('input')?.value || '',
+    cat: tr.querySelector('select')?.value || '',
+    deiso: tr.querySelector('.deiso-select')?.value || ''
+  }));
+
+  // -----------------------
+  // pidImage
+  // -----------------------
+  let pid = null;
+  if(pidImage) {
+    const attrs = pidImage.getAttrs();
+    const img = attrs.image;
+    pid = { src: img?.src || null, x: attrs.x, y: attrs.y, width: attrs.width, height: attrs.height };
+  }
+
+  // -----------------------
+  // Annotations: shapes + groups
+  // -----------------------
+  const annotations = [];
+  mainLayer.getChildren().forEach(node => {
+    if(node === pidImage) return; // skip pidImage (already saved)
+    
+    switch(node.className) {
+      case 'Circle':
+        annotations.push({ shapeType: 'circle', attrs: node.getAttrs(), meta: node.meta || {} });
+        break;
+      case 'Line':
+        annotations.push({ shapeType: 'line', attrs: node.getAttrs(), points: node.points().slice() });
+        break;
+      case 'Image':
+        const imgAttrs = node.getAttrs();
+        annotations.push({
+          shapeType: 'image',
+          attrs: { x: imgAttrs.x, y: imgAttrs.y, width: imgAttrs.width, height: imgAttrs.height, rotation: imgAttrs.rotation },
+          src: imgAttrs.image?.src || null,
+          meta: node.meta || {}
+        });
+        break;
+      case 'Text':
+        annotations.push({
+          shapeType: 'text',
+          attrs: { x: node.x(), y: node.y(), text: node.text(), fontSize: node.fontSize(), fill: node.fill() },
+          meta: node.meta || {}
+        });
+        break;
+      case 'Group':
+        const children = node.getChildren().toArray();
+        const txtChild = children.find(c => c.className === 'Text');
+        annotations.push({
+          shapeType: 'group',
+          attrs: { x: node.x(), y: node.y(), text: txtChild?.text() || '' },
+          meta: node.meta || {}
+        });
+        break;
+    }
+  });
+
+  return {
+    points,
+    deiso,
+    pid,
+    annotations
+  };
+}
+
+/* Apply saved object to UI: clear stage & tables and restore */
+function loadDraftData(saved) {
+  if (!saved) return alert('No data to load.');
+
+  // Clear stage + existing data
+  mainLayer.destroyChildren();
+  annotations = [];
+  pidImage = null;
+
+  // -----------------------
+  // Restore PID image
+  // -----------------------
+  if (saved.pid?.src) {
+    startLoad();
+    const img = new Image();
+    img.onload = () => {
+      endLoad();
+      const fit = fitImageToStage(saved.pid.width || img.width, saved.pid.height || img.height);
+      pidImage = new Konva.Image({
+        image: img,
+        x: saved.pid.x || 0,
+        y: saved.pid.y || 0,
+        width: saved.pid.width || fit.width,
+        height: saved.pid.height || fit.height
+      });
+      mainLayer.add(pidImage);
+      pidImage.moveToBottom();
+      mainLayer.batchDraw();
+    };
+    img.onerror = () => { endLoad(); console.warn('Could not reload PID image'); };
+    img.src = saved.pid.src;
+  }
+
+  // -----------------------
+  // Restore annotations (shapes, lines, images, text)
+  // -----------------------
+  (saved.annotations || []).forEach(a => {
+    try {
+      let node, idText;
+
+      switch (a.shapeType) {
+        case 'circle':
+          node = new Konva.Circle({
+            x: a.attrs.x || 0,
+            y: a.attrs.y || 0,
+            radius: a.attrs.radius || BASE_PIN_RADIUS,
+            fill: a.attrs.fill || 'rgba(255,0,0,0.7)',
+            stroke: a.attrs.stroke || '#111',
+            strokeWidth: a.attrs.strokeWidth || 1,
+            draggable: true
+          });
+          // restore number label for circle
+          idText = new Konva.Text({
+            x: (a.attrs.x || 0) + 8,
+            y: (a.attrs.y || 0) - 12,
+            text: String(a.attrs.id || ''),
+            fontSize: 12,
+            fill: '#111',
+            listening: false
+          });
+          const annoId = a.attrs.annoId || genAnnoId();
+          node.setAttr('annoId', annoId);
+          idText.setAttr('annoId', annoId);
+          mainLayer.add(node);
+          mainLayer.add(idText);
+          annotations.push({ annoId, id: a.attrs.id || null, shapeType: 'circle', attrs: a.attrs });
+          break;
+
+        case 'image':
+          if (a.src) {
+            startLoad();
+            const imgObj = new Image();
+            imgObj.onload = () => {
+              endLoad();
+              node = new Konva.Image({
+                image: imgObj,
+                x: a.attrs.x || 0,
+                y: a.attrs.y || 0,
+                width: a.attrs.width || (imgObj.width * SYMBOL_SCALE),
+                height: a.attrs.height || (imgObj.height * SYMBOL_SCALE),
+                rotation: a.attrs.rotation || 0,
+                draggable: true
+              });
+              const imageId = a.attrs.annoId || genAnnoId();
+              node.setAttr('annoId', imageId);
+              mainLayer.add(node);
+              annotations.push({ annoId: imageId, shapeType: 'image', src: a.src, attrs: a.attrs });
+              mainLayer.batchDraw();
+            };
+            imgObj.onerror = () => { endLoad(); console.warn('Failed symbol image load: ' + a.src); };
+            imgObj.src = a.src;
+          }
+          break;
+
+        case 'line':
+          node = new Konva.Line({
+            points: a.points || a.attrs.points || [],
+            stroke: a.attrs.stroke || '#000',
+            strokeWidth: a.attrs.strokeWidth || 1,
+            dash: a.attrs.dash || [],
+            draggable: false
+          });
+          const lineId = a.attrs.annoId || genAnnoId();
+          node.setAttr('annoId', lineId);
+          mainLayer.add(node);
+          annotations.push({ annoId: lineId, shapeType: 'line', points: a.points || a.attrs.points || [], attrs: a.attrs });
+          break;
+
+        case 'text':
+          node = new Konva.Text(a.attrs);
+          if (a.meta) node.meta = a.meta;
+          mainLayer.add(node);
+          annotations.push({ annoId: a.attrs.annoId || genAnnoId(), shapeType: 'text', attrs: a.attrs });
+          break;
+
+        case 'group':
+          node = new Konva.Group({
+            x: a.attrs.x || 0,
+            y: a.attrs.y || 0,
+            draggable: true
+          });
+          const txt = new Konva.Text({
+            x: 8,
+            y: 8,
+            text: a.attrs.text || '',
+            fontSize: 14,
+            fill: '#111'
+          });
+          const rect = new Konva.Rect({
+            x: 0,
+            y: 0,
+            width: txt.width() + 16,
+            height: txt.height() + 16,
+            stroke: '#000',
+            dash: [6, 4],
+            fill: 'transparent'
+          });
+          node.add(rect);
+          node.add(txt);
+          const grpId = a.attrs.annoId || genAnnoId();
+          node.setAttr('annoId', grpId);
+          mainLayer.add(node);
+          annotations.push({ annoId: grpId, shapeType: 'group', attrs: a.attrs });
+          break;
+      }
+
+    } catch (e) {
+      console.error('restore annotation error', e);
+    }
+  });
+
+  // -----------------------
+  // Restore tables
+  // -----------------------
+  const ptBody = document.querySelector('#pointsTable tbody');
+  ptBody.innerHTML = '';
+  (saved.points || []).forEach(p => {
+    const tr = document.createElement('tr');
+    tr.dataset.id = p.id || '';
+    tr.innerHTML = `
+      <td>${p.id || ''}</td>
+      <td><input class="p-desc" type="text" value="${escapeHtml(p.desc || '')}"></td>
+      <td><select class="p-cat">
+        <option ${p.cat==='Process'?'selected':''}>Process</option>
+        <option ${p.cat==='Electrical'?'selected':''}>Electrical</option>
+        <option ${p.cat==='Mechanical'?'selected':''}>Mechanical</option>
+      </select></td>
+      <td><select class="p-iso">
+        <option ${p.iso==='Closed'?'selected':''}>Closed</option>
+        <option ${p.iso==='Open'?'selected':''}>Open</option>
+        <option ${p.iso==='Inserted'?'selected':''}>Inserted</option>
+        <option ${p.iso==='Removed'?'selected':''}>Removed</option>
+      </select></td>
+    `;
+    ptBody.appendChild(tr);
+  });
+
+  const diBody = document.querySelector('#deisoTable tbody');
+  diBody.innerHTML = '';
+  (saved.deiso || []).forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.id || ''}</td>
+      <td><input type="text" value="${escapeHtml(d.desc || '')}"></td>
+      <td><select>
+          <option ${d.cat==='Process'?'selected':''}>Process</option>
+          <option ${d.cat==='Electrical'?'selected':''}>Electrical</option>
+          <option ${d.cat==='Mechanical'?'selected':''}>Mechanical</option>
+      </select></td>
+      <td><select class="deiso-select">
+          <option ${d.deiso==='Open'?'selected':''}>Open</option>
+          <option ${d.deiso==='Removed'?'selected':''}>Removed</option>
+          <option ${d.deiso==='Reconnected'?'selected':''}>Reconnected</option>
+          <option ${d.deiso==='Closed'?'selected':''}>Closed</option>
+      </select></td>
+    `;
+    diBody.appendChild(tr);
+  });
+
+  mainLayer.batchDraw();
+  updateDeisoTable();
+  alert('Draft loaded successfully.');
+}
+
+/* ---------------------------
+  Supabase-backed functions (fixed)
+   --------------------------- */
+
+async function saveDraftToSupabase(title){
+  // make sure caller is authenticated
+  const user = await requireUserOrThrow();
+  await initSupabaseIfNeeded();
+
+  const payload = buildSaveObject();
+
+  // we attach timestamps here to be explicit
+  const row = {
+    user_id: user.id,
+    title,
+    data: payload,
+    updated_at: new Date().toISOString()
+  };
+
+  const { data, error } = await supabaseClient
+    .from('iso_drafts')
+    .upsert(row, { onConflict: 'user_id,title', returning: 'representation' }); // 'representation' returns the row(s)
+
+  if (error) {
+    console.error('saveDraftToSupabase error:', { data, error });
+    alert('Failed to save draft to Supabase. See console for error.');
+    return false;
+  }
+
+  // success
+  console.log('Draft saved:', data);
+  alert(`Draft "${title}" saved to cloud.`);
+  return true;
+}
+
+async function listDraftsFromSupabase(){
+  const user = await requireUserOrThrow();
+  await initSupabaseIfNeeded();
+
+  const { data, error } = await supabaseClient
+    .from('iso_drafts')
+    .select('id, title, updated_at')
+    .eq('user_id', user.id)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    console.error('listDraftsFromSupabase error:', { data, error });
+    alert('Failed to fetch drafts. See console for details.');
+    return [];
+  }
+
+  return data || [];
+}
+
+async function loadDraftFromSupabaseById(id){
+  const user = await requireUserOrThrow();
+  await initSupabaseIfNeeded();
+
+  const { data, error } = await supabaseClient
+    .from('iso_drafts')
+    .select('data')
+    .eq('user_id', user.id)
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('loadDraftFromSupabaseById error:', { data, error });
+    alert('Failed to load draft. See console for details.');
+    return null;
+  }
+
+  // return the JSON payload stored in 'data' column
+  return data?.data || null;
+}
+
+/* Bind save / drafts UI - ensure we await requireUserOrThrow */
+document.getElementById('saveCloud').addEventListener('click', async ()=> {
+  try{
+    await requireUserOrThrow(); // <-- ensure user is present (await)
+    const title = prompt('Enter draft name:', 'Untitled');
+    if(!title) return;
+    await saveDraftToSupabase(title);
+  } catch(e) {
+    console.error('saveCloud handler error', e);
+  }
+});
+
+document.getElementById('drafts').addEventListener('click', async ()=> {
+  try{
+    await requireUserOrThrow(); // await here as well
+    const drafts = await listDraftsFromSupabase();
+    if(!drafts || drafts.length===0) return alert('No drafts found for this account.');
+    // populate modal (your existing code)
+    const modal = document.getElementById('draftModal');
+    const listDiv = document.getElementById('draftList'); listDiv.innerHTML = '';
+    drafts.forEach(d=>{
+      const row = document.createElement('div'); row.className='draft-row';
+      const label = document.createElement('div');
+      label.innerHTML = `<strong>${d.title}</strong><div class="small">${new Date(d.updated_at).toLocaleString()}</div>`;
+      const loadBtn = document.createElement('button'); loadBtn.textContent='Load';
+      loadBtn.addEventListener('click', async ()=>{ 
+        const dat = await loadDraftFromSupabaseById(d.id); 
+        if(dat) loadDraftData(dat); 
+        modal.classList.remove('open'); 
+      });
+      const delBtn = document.createElement('button'); delBtn.textContent='Delete';
+      delBtn.addEventListener('click', async ()=>{
+        if(!confirm(`Delete draft "${d.title}"?`)) return;
+        const { error } = await supabaseClient.from('iso_drafts').delete().eq('id', d.id).eq('user_id', (await requireUserOrThrow()).id);
+        if (error) { console.error('delete draft error', error); alert('Delete failed. See console.'); return; }
+        row.remove();
+      });
+
+      row.appendChild(label); row.appendChild(loadBtn); row.appendChild(delBtn);
+      listDiv.appendChild(row);
+    });
+    modal.classList.add('open');
+    document.getElementById('closeModal').onclick = ()=> document.getElementById('draftModal').classList.remove('open');
+  }catch(e){
+    console.error('drafts handler error', e);
+  }
+});
+
+
+/* ---------------------------
+  Baseline button (open baseline)
+   --------------------------- */
+document.getElementById('baselineBtn').addEventListener('click', () => {
+  // Open baseline tool in new tab - ensure baseline.html is in same folder
+  window.open('baseline.html', '_blank');
+});
+
+/* ---------------------------
+  Resize handling
+   --------------------------- */
+window.addEventListener('resize', ()=>{ stage.width(window.innerWidth - 50); mainLayer.batchDraw(); });
+updateExportButtonState();
+</script>
+
+</body>
+</html>

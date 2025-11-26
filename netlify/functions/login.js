@@ -51,9 +51,10 @@ exports.handler = async (event) => {
       };
     }
 
+    // Return user data on successful login
     return {
       statusCode: 200,
-      body: JSON.stringify(data),
+      body: JSON.stringify({ user: data.user }),
     };
   } catch (err) {
     return {

@@ -1,9 +1,7 @@
-// netlify/functions/login.js
-
 const fetch = require("node-fetch"); // Only needed if using Node 18 or lower
 
 exports.handler = async (event) => {
-  // Allow only POST requests
+  // Only allow POST requests
   if (event.httpMethod !== "POST") {
     return {
       statusCode: 405,
@@ -14,7 +12,10 @@ exports.handler = async (event) => {
 
   let email, password;
   try {
+    // Parse the email and password from the request body
     ({ email, password } = JSON.parse(event.body));
+
+    // Validate email and password
     if (!email || !password) {
       return {
         statusCode: 400,
@@ -32,6 +33,7 @@ exports.handler = async (event) => {
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
   try {
+    // Send login request to Supabase
     const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: "POST",
       headers: {
@@ -42,6 +44,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({ email, password }),
     });
 
+    // Parse the response from Supabase
     const data = await response.json();
 
     if (!response.ok) {
@@ -51,10 +54,10 @@ exports.handler = async (event) => {
       };
     }
 
-    // Return user data on successful login
+    // On success, return the user data and their session token
     return {
       statusCode: 200,
-      body: JSON.stringify({ user: data.user }),
+      body: JSON.stringify({ user: data.user, session: data.access_token }),
     };
   } catch (err) {
     return {

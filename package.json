@@ -1,0 +1,17 @@
+{
+  "name": "isologix",
+  "version": "1.0.0",
+  "description": "A simple Netlify project with Supabase login",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "node-fetch": "^2.6.1"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": "14.x"
+  },
+  "license": "ISC"
+}

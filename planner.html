@@ -32,6 +32,7 @@ async function enforceLogin() {
     const { user, error } = await callNetlifyFunction("get-session", {}); 
     // `get-session` is a custom Netlify function that returns the current logged-in user
     if (error || !user) {
+      console.log('User not found or session expired, redirecting to login...');
       window.location.href = "index.html";
       return;
     }
@@ -39,18 +40,6 @@ async function enforceLogin() {
     document.getElementById("userEmail").textContent = CURRENT_USER.email;
   } catch (err) {
     console.error("Session error:", err);
-    window.location.href = "index.html";
-  }
-}
-
-/* Logout via Netlify function */
-async function doLogout() {
-  try {
-    const { error } = await callNetlifyFunction("logout", {});
-    if (error) console.error("Logout error:", error);
-  } catch (err) {
-    console.error("Logout error:", err);
-  } finally {
     window.location.href = "index.html";
   }
 }
@@ -1086,3 +1075,4 @@ updateExportButtonState();
 
 </body>
 </html>
+

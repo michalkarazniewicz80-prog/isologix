@@ -28,24 +28,20 @@ async function callNetlifyFunction(path, data) {
 
 /* Check session at load using a protected Netlify function (optional) */
 async function enforceLogin() {
-  try {
-    const { user, error } = await callNetlifyFunction("get-session", {}); 
-    // `get-session` is a custom Netlify function that returns the current logged-in user
-    if (error || !user) {
-      console.log('User not found or session expired, redirecting to login...');
-      window.location.href = "index.html";
-      return;
-    }
-    CURRENT_USER = user;
-    document.getElementById("userEmail").textContent = CURRENT_USER.email;
-  } catch (err) {
-    console.error("Session error:", err);
+  const userSession = JSON.parse(localStorage.getItem('userSession'));
+
+  if (!userSession) {
+    // If no session exists, redirect to login page
     window.location.href = "index.html";
+  } else {
+    // Set the user email on the page (or whatever user info you need)
+    document.getElementById("userEmail").textContent = userSession.email;
   }
 }
 
-/* Run on page load */
+// Call enforceLogin on page load
 enforceLogin();
+
 </script>
 
 <style>
@@ -1075,4 +1071,5 @@ updateExportButtonState();
 
 </body>
 </html>
+
 

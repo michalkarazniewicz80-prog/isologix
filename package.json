@@ -1,17 +1,15 @@
 {
   "name": "isologix",
   "version": "1.0.0",
-  "description": "A simple Netlify project with Supabase login",
+  "description": "Isologix project with Netlify functions and Supabase authentication",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "netlify dev",  // Add this if you're using Netlify CLI for local development
+    "build": "echo \"No build command specified\" && exit 0"  // Custom build command if necessary
   },
   "dependencies": {
-    "node-fetch": "^2.6.1"
-  },
-  "devDependencies": {},
-  "engines": {
-    "node": "14.x"
-  },
-  "license": "ISC"
+    "@supabase/supabase-js": "^2.7.0",  // Supabase client library
+    "node-fetch": "^2.6.7"              // If using Node.js version < 18
+  }
 }

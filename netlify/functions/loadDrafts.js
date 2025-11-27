@@ -8,8 +8,8 @@ exports.handler = async (event) => {
     }
 
     onst SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE;
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE);
+    const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_ANON_KEY;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const { data, error } = await supabase
       .from('iso_drafts')

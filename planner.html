@@ -44,13 +44,6 @@ async function enforceLogin() {
     CURRENT_USER = JSON.parse(userSession);
     document.getElementById("userEmail").textContent = CURRENT_USER.email;
 
-    // Optionally, you can verify the session with Supabase here if needed.
-  } catch (err) {
-    console.error("Session error:", err);
-    window.location.href = "index.html";
-  }
-}
-
 // Run on page load
 enforceLogin();
 </script>
@@ -1082,6 +1075,7 @@ updateExportButtonState();
 
 </body>
 </html>
+
 
 
 

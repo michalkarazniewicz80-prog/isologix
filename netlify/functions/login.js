@@ -1,7 +1,6 @@
-const fetch = require("node-fetch"); // Only needed if using Node 18 or lower
+const fetch = require("node-fetch"); // Only needed for Node < 18
 
 exports.handler = async (event) => {
-  // Only allow POST requests
   if (event.httpMethod !== "POST") {
     return {
       statusCode: 405,
@@ -12,10 +11,7 @@ exports.handler = async (event) => {
 
   let email, password;
   try {
-    // Parse the email and password from the request body
     ({ email, password } = JSON.parse(event.body));
-
-    // Validate email and password
     if (!email || !password) {
       return {
         statusCode: 400,
@@ -33,7 +29,6 @@ exports.handler = async (event) => {
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
   try {
-    // Send login request to Supabase
     const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
       method: "POST",
       headers: {
@@ -44,20 +39,36 @@ exports.handler = async (event) => {
       body: JSON.stringify({ email, password }),
     });
 
-    // Parse the response from Supabase
     const data = await response.json();
 
     if (!response.ok) {
       return {
         statusCode: response.status,
-        body: JSON.stringify({ error: data?.error_description || data?.message || "Login failed" }),
+        body: JSON.stringify({
+          error: data?.error_description || data?.message || "Login failed",
+        }),
       };
     }
 
-    // On success, return the user data and their session token
+    const token = data.access_token;
+
+    // ⭐ Save the session token in an HttpOnly cookie
+    const cookie = [
+      `sb_token=${token}`,
+      "HttpOnly",
+      "Secure",
+      "Path=/",
+      "SameSite=Lax",
+      "Max-Age=2592000" // 30 days
+    ].join("; ");
+
     return {
       statusCode: 200,
-      body: JSON.stringify({ user: data.user, session: data.access_token }),
+      headers: {
+        "Set-Cookie": cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ user: data.user }),
     };
   } catch (err) {
     return {

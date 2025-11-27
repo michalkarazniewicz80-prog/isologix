@@ -985,7 +985,7 @@ async function loadDraftHandler() {
     const user = await requireUserOrThrow(); // ensures user is logged in
 
     // fetch drafts for this user
-    const res = await callNetlifyFunction('loadDrafts'});
+    const res = await callNetlifyFunction('loadDrafts');
     if (res.error) throw new Error(res.error);
     const drafts = res.drafts || [];
 
@@ -1059,6 +1059,7 @@ updateExportButtonState();
 
 </body>
 </html>
+
 
 
 

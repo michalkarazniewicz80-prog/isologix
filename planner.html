@@ -959,13 +959,19 @@ async function requireUserOrThrow() {
 /* Save draft */
 async function saveDraftHandler() {
   try {
-    const user = await requireUserOrThrow();
+    const user = await requireUserOrThrow(); // ensures user is logged in
     const title = prompt('Enter draft name:', 'Untitled');
     if (!title) return;
 
-    const payload = buildSaveObject(); // your existing function to capture form/annotations
-    const { error } = await callNetlifyFunction('saveDraft', { title, data: payload });
-    if (error) throw new Error(error);
+    const payload = buildSaveObject(); // existing function to capture form/canvas data
+
+    const res = await callNetlifyFunction('saveDraft', {
+      title,
+      data: payload,
+      user_id: user.id  // pass user ID to Netlify function
+    });
+
+    if (res.error) throw new Error(res.error);
 
     alert(`Draft "${title}" saved successfully.`);
   } catch (err) {
@@ -1049,6 +1055,7 @@ updateExportButtonState();
 
 </body>
 </html>
+
 
 
 

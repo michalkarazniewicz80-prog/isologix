@@ -26,27 +26,38 @@ async function callNetlifyFunction(path, data) {
   return res.json();
 }
 
-/* Check session at load using a protected Netlify function (optional) */
+/* Check session at load using stored values */
 async function enforceLogin() {
   try {
-    // Retrieve the stored user session from localStorage
-    const userSession = localStorage.getItem('userSession');
-    const sessionToken = localStorage.getItem('sessionToken');
+    const userSession = localStorage.getItem("userSession");
+    const sessionToken = localStorage.getItem("sessionToken");
 
-    if (error || !user) {
-  console.warn("⚠️ Session not valid — TEMPORARY: not redirecting.");
-  // window.location.href = "index.html";  // TEMP disabled
-} else {
-  CURRENT_USER = user;
-  document.getElementById("userEmail").textContent = CURRENT_USER.email;
-}
+    if (!userSession || !sessionToken) {
+      console.warn("⚠️ No local session — TEMP skipping redirect.");
+      // window.location.href = "index.html"; // TEMP disabled
+      return;
+    }
 
-    CURRENT_USER = JSON.parse(userSession);
+    const user = JSON.parse(userSession);
+
+    if (!user) {
+      console.warn("⚠️ Invalid user object — TEMP skipping redirect.");
+      // window.location.href = "index.html"; // TEMP disabled
+      return;
+    }
+
+    CURRENT_USER = user;
     document.getElementById("userEmail").textContent = CURRENT_USER.email;
 
-// Run on page load
+  } catch (e) {
+    console.error("Session check failed:", e);
+  }
+}
+
+/* Run on page load */
 enforceLogin();
 </script>
+
 
 <style>
 :root { --navy:#0b4a8b; --accent:#0078d7; --light:#e6f2ff; }
@@ -1075,6 +1086,7 @@ updateExportButtonState();
 
 </body>
 </html>
+
 
 
 

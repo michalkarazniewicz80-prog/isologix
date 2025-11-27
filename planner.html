@@ -980,15 +980,19 @@ async function saveDraftHandler() {
   }
 }
 
-/* List drafts and populate modal */
-async function listDraftsHandler() {
+/* Load drafts into modal */
+async function loadDraftHandler() {
   try {
-    await requireUserOrThrow();
+    const user = await requireUserOrThrow(); // ensures user is logged in
 
-    const { drafts, error } = await callNetlifyFunction('listDrafts', {});
-    if (error) throw new Error(error);
-    if (!drafts || drafts.length === 0) return alert('No drafts found.');
+    // fetch drafts for this user
+    const res = await callNetlifyFunction('loadDrafts', { user_id: user.id });
+    if (res.error) throw new Error(res.error);
+    const drafts = res.drafts || [];
 
+    if (drafts.length === 0) return alert('No drafts found.');
+
+    // populate modal
     const modal = document.getElementById('draftModal');
     const listDiv = document.getElementById('draftList');
     listDiv.innerHTML = '';
@@ -1003,9 +1007,7 @@ async function listDraftsHandler() {
       const loadBtn = document.createElement('button');
       loadBtn.textContent = 'Load';
       loadBtn.addEventListener('click', async () => {
-        const { draft, error } = await callNetlifyFunction('loadDraft', { id: d.id });
-        if (error) return alert('Failed to load draft: ' + error);
-        loadDraftData(draft); // your existing function
+        await loadDraftData(d.data); // your existing function to restore the draft
         modal.classList.remove('open');
       });
 
@@ -1013,8 +1015,11 @@ async function listDraftsHandler() {
       delBtn.textContent = 'Delete';
       delBtn.addEventListener('click', async () => {
         if (!confirm(`Delete draft "${d.title}"?`)) return;
-        const { error } = await callNetlifyFunction('deleteDraft', { id: d.id });
-        if (error) return alert('Failed to delete draft: ' + error);
+        const delRes = await callNetlifyFunction('deleteDraft', { user_id: user.id, id: d.id });
+        if (delRes.error) { 
+          console.error('Delete draft error', delRes.error); 
+          return alert('Delete failed. See console.');
+        }
         row.remove();
       });
 
@@ -1028,14 +1033,14 @@ async function listDraftsHandler() {
     document.getElementById('closeModal').onclick = () => modal.classList.remove('open');
 
   } catch (err) {
-    console.error('listDraftsHandler error', err);
-    alert('Failed to fetch drafts. See console.');
+    console.error('loadDraftHandler error', err);
+    alert('Failed to load drafts. See console.');
   }
 }
 
 /* Wire buttons */
 document.getElementById('saveCloud').addEventListener('click', saveDraftHandler);
-document.getElementById('drafts').addEventListener('click', listDraftsHandler);
+document.getElementById('drafts').addEventListener('click', loadDraftHandler);
 
 
 /* ---------------------------
@@ -1055,6 +1060,7 @@ updateExportButtonState();
 
 </body>
 </html>
+
 
 
 

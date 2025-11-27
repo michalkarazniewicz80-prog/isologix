@@ -967,8 +967,7 @@ async function saveDraftHandler() {
 
     const res = await callNetlifyFunction('saveDraft', {
       title,
-      data: payload,
-      user_id: user.id  // pass user ID to Netlify function
+      data: payload
     });
 
     if (res.error) throw new Error(res.error);
@@ -1060,6 +1059,7 @@ updateExportButtonState();
 
 </body>
 </html>
+
 
 
 

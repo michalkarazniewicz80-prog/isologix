@@ -33,11 +33,13 @@ async function enforceLogin() {
     const userSession = localStorage.getItem('userSession');
     const sessionToken = localStorage.getItem('sessionToken');
 
-    if (!userSession || !sessionToken) {
-      // No session token, redirect to login page
-      window.location.href = "index.html";
-      return;
-    }
+    if (error || !user) {
+  console.warn("⚠️ Session not valid — TEMPORARY: not redirecting.");
+  // window.location.href = "index.html";  // TEMP disabled
+} else {
+  CURRENT_USER = user;
+  document.getElementById("userEmail").textContent = CURRENT_USER.email;
+}
 
     CURRENT_USER = JSON.parse(userSession);
     document.getElementById("userEmail").textContent = CURRENT_USER.email;
@@ -1080,6 +1082,7 @@ updateExportButtonState();
 
 </body>
 </html>
+
 
 
 

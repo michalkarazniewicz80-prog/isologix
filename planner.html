@@ -945,128 +945,92 @@ function loadDraftData(saved) {
   alert('Draft loaded successfully.');
 }
 
-/* ---------------------------
-  Supabase-backed functions (fixed)
-   --------------------------- */
+<script>
+/* ===============================
+   Planner Save / Load via Netlify
+   =============================== */
 
-async function saveDraftToSupabase(title){
-  // make sure caller is authenticated
-  const user = await requireUserOrThrow();
-  await initSupabaseIfNeeded();
-
-  const payload = buildSaveObject();
-
-  // we attach timestamps here to be explicit
-  const row = {
-    user_id: user.id,
-    title,
-    data: payload,
-    updated_at: new Date().toISOString()
-  };
-
-  const { data, error } = await supabaseClient
-    .from('iso_drafts')
-    .upsert(row, { onConflict: 'user_id,title', returning: 'representation' }); // 'representation' returns the row(s)
-
-  if (error) {
-    console.error('saveDraftToSupabase error:', { data, error });
-    alert('Failed to save draft to Supabase. See console for error.');
-    return false;
-  }
-
-  // success
-  console.log('Draft saved:', data);
-  alert(`Draft "${title}" saved to cloud.`);
-  return true;
+/* Helper to get current user via Netlify function */
+async function requireUserOrThrow() {
+  const { user, error } = await callNetlifyFunction('get-session', {});
+  if (error || !user) throw new Error('User not logged in');
+  return user;
 }
 
-async function listDraftsFromSupabase(){
-  const user = await requireUserOrThrow();
-  await initSupabaseIfNeeded();
-
-  const { data, error } = await supabaseClient
-    .from('iso_drafts')
-    .select('id, title, updated_at')
-    .eq('user_id', user.id)
-    .order('updated_at', { ascending: false });
-
-  if (error) {
-    console.error('listDraftsFromSupabase error:', { data, error });
-    alert('Failed to fetch drafts. See console for details.');
-    return [];
-  }
-
-  return data || [];
-}
-
-async function loadDraftFromSupabaseById(id){
-  const user = await requireUserOrThrow();
-  await initSupabaseIfNeeded();
-
-  const { data, error } = await supabaseClient
-    .from('iso_drafts')
-    .select('data')
-    .eq('user_id', user.id)
-    .eq('id', id)
-    .single();
-
-  if (error) {
-    console.error('loadDraftFromSupabaseById error:', { data, error });
-    alert('Failed to load draft. See console for details.');
-    return null;
-  }
-
-  // return the JSON payload stored in 'data' column
-  return data?.data || null;
-}
-
-/* Bind save / drafts UI - ensure we await requireUserOrThrow */
-document.getElementById('saveCloud').addEventListener('click', async ()=> {
-  try{
-    await requireUserOrThrow(); // <-- ensure user is present (await)
+/* Save draft */
+async function saveDraftHandler() {
+  try {
+    const user = await requireUserOrThrow();
     const title = prompt('Enter draft name:', 'Untitled');
-    if(!title) return;
-    await saveDraftToSupabase(title);
-  } catch(e) {
-    console.error('saveCloud handler error', e);
-  }
-});
+    if (!title) return;
 
-document.getElementById('drafts').addEventListener('click', async ()=> {
-  try{
-    await requireUserOrThrow(); // await here as well
-    const drafts = await listDraftsFromSupabase();
-    if(!drafts || drafts.length===0) return alert('No drafts found for this account.');
-    // populate modal (your existing code)
+    const payload = buildSaveObject(); // your existing function to capture form/annotations
+    const { error } = await callNetlifyFunction('saveDraft', { title, data: payload });
+    if (error) throw new Error(error);
+
+    alert(`Draft "${title}" saved successfully.`);
+  } catch (err) {
+    console.error('saveDraftHandler error', err);
+    alert('Failed to save draft. See console.');
+  }
+}
+
+/* List drafts and populate modal */
+async function listDraftsHandler() {
+  try {
+    await requireUserOrThrow();
+
+    const { drafts, error } = await callNetlifyFunction('listDrafts', {});
+    if (error) throw new Error(error);
+    if (!drafts || drafts.length === 0) return alert('No drafts found.');
+
     const modal = document.getElementById('draftModal');
-    const listDiv = document.getElementById('draftList'); listDiv.innerHTML = '';
-    drafts.forEach(d=>{
-      const row = document.createElement('div'); row.className='draft-row';
+    const listDiv = document.getElementById('draftList');
+    listDiv.innerHTML = '';
+
+    drafts.forEach(d => {
+      const row = document.createElement('div');
+      row.className = 'draft-row';
+
       const label = document.createElement('div');
       label.innerHTML = `<strong>${d.title}</strong><div class="small">${new Date(d.updated_at).toLocaleString()}</div>`;
-      const loadBtn = document.createElement('button'); loadBtn.textContent='Load';
-      loadBtn.addEventListener('click', async ()=>{ 
-        const dat = await loadDraftFromSupabaseById(d.id); 
-        if(dat) loadDraftData(dat); 
-        modal.classList.remove('open'); 
+
+      const loadBtn = document.createElement('button');
+      loadBtn.textContent = 'Load';
+      loadBtn.addEventListener('click', async () => {
+        const { draft, error } = await callNetlifyFunction('loadDraft', { id: d.id });
+        if (error) return alert('Failed to load draft: ' + error);
+        loadDraftData(draft); // your existing function
+        modal.classList.remove('open');
       });
-      const delBtn = document.createElement('button'); delBtn.textContent='Delete';
-      delBtn.addEventListener('click', async ()=>{
-        if(!confirm(`Delete draft "${d.title}"?`)) return;
-        const { error } = await supabaseClient.from('iso_drafts').delete().eq('id', d.id).eq('user_id', (await requireUserOrThrow()).id);
-        if (error) { console.error('delete draft error', error); alert('Delete failed. See console.'); return; }
+
+      const delBtn = document.createElement('button');
+      delBtn.textContent = 'Delete';
+      delBtn.addEventListener('click', async () => {
+        if (!confirm(`Delete draft "${d.title}"?`)) return;
+        const { error } = await callNetlifyFunction('deleteDraft', { id: d.id });
+        if (error) return alert('Failed to delete draft: ' + error);
         row.remove();
       });
 
-      row.appendChild(label); row.appendChild(loadBtn); row.appendChild(delBtn);
+      row.appendChild(label);
+      row.appendChild(loadBtn);
+      row.appendChild(delBtn);
       listDiv.appendChild(row);
     });
+
     modal.classList.add('open');
-    document.getElementById('closeModal').onclick = ()=> document.getElementById('draftModal').classList.remove('open');
-  }catch(e){
-    console.error('drafts handler error', e);
+    document.getElementById('closeModal').onclick = () => modal.classList.remove('open');
+
+  } catch (err) {
+    console.error('listDraftsHandler error', err);
+    alert('Failed to fetch drafts. See console.');
   }
-});
+}
+
+/* Wire buttons */
+document.getElementById('saveCloud').addEventListener('click', saveDraftHandler);
+document.getElementById('drafts').addEventListener('click', listDraftsHandler);
 
 
 /* ---------------------------
@@ -1086,6 +1050,7 @@ updateExportButtonState();
 
 </body>
 </html>
+
 
 
 

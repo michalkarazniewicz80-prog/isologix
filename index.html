@@ -212,6 +212,7 @@ function storeSession(result) {
 // --- Login ---
 loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
+
   const email = document.getElementById("loginEmail").value;
   const password = document.getElementById("loginPassword").value;
 
@@ -221,6 +222,14 @@ loginForm.addEventListener("submit", async (e) => {
     authMessage.textContent = res.error;
     return;
   }
+
+  // store full session
+  localStorage.setItem("sessionToken", res.access_token);
+  localStorage.setItem("userSession", JSON.stringify(res.user));
+  window.CURRENT_USER = res.user;
+
+  window.location.href = "planner.html";
+});
 
   // ✅ Save session returned from Netlify login
   storeSession(res);
@@ -255,4 +264,5 @@ signupForm.addEventListener("submit", async (e) => {
 
 </body>
 </html>
+
 

@@ -189,16 +189,43 @@ async function callNetlifyFunction(path, data) {
   return res.json();
 }
 
+// ----------------------------------------------------
+// --- Save Session After Login or Signup ***
+// ----------------------------------------------------
+function storeSession(result) {
+  const accessToken =
+    result.data?.session?.access_token ||
+    result.session?.access_token ||
+    result.access_token;
+
+  const userObj =
+    result.data?.user ||
+    result.user;
+
+  if (accessToken && userObj) {
+    localStorage.setItem("sessionToken", accessToken);
+    localStorage.setItem("userSession", JSON.stringify(userObj));
+    window.CURRENT_USER = userObj;
+  }
+}
+
 // --- Login ---
 loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const email = document.getElementById("loginEmail").value;
   const password = document.getElementById("loginPassword").value;
 
-  const { error } = await callNetlifyFunction("login", { email, password });
+  const res = await callNetlifyFunction("login", { email, password });
 
-  if (error) authMessage.textContent = error;
-  else window.location.href = "planner.html";
+  if (res.error) {
+    authMessage.textContent = res.error;
+    return;
+  }
+
+  // ✅ Save session returned from Netlify login
+  storeSession(res);
+
+  window.location.href = "planner.html";
 });
 
 // --- Sign Up ---
@@ -207,16 +234,25 @@ signupForm.addEventListener("submit", async (e) => {
   const email = document.getElementById("signupEmail").value;
   const password = document.getElementById("signupPassword").value;
 
-  const { error } = await callNetlifyFunction("signup", { email, password });
+  const res = await callNetlifyFunction("signup", { email, password });
 
-  if (error) authMessage.textContent = error;
-  else {
-    authMessage.style.color = "green";
-    authMessage.textContent = "Sign-up successful! Redirecting...";
-    setTimeout(() => { window.location.href = "planner.html"; }, 1500);
+  if (res.error) {
+    authMessage.textContent = res.error;
+    return;
   }
+
+  // ✅ Save session returned from Netlify signup
+  storeSession(res);
+
+  authMessage.style.color = "green";
+  authMessage.textContent = "Sign-up successful! Redirecting...";
+  setTimeout(() => {
+    window.location.href = "planner.html";
+  }, 1500);
 });
+
 </script>
 
 </body>
 </html>
+

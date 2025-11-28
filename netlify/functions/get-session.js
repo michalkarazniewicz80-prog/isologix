@@ -4,26 +4,28 @@ exports.handler = async (event) => {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
-  // 1. Extract cookie header
-  const cookieHeader = event.headers.cookie || event.headers.Cookie || "";
-  const cookies = Object.fromEntries(
-    cookieHeader.split(";").map(c => c.trim().split("="))
-  );
-
-  // 2. Get our stored session token
-  const token = cookies["sb_token"];
-  if (!token) {
+  // 1. Read Authorization header from client
+  const authHeader = event.headers.authorization || event.headers.Authorization;
+  if (!authHeader) {
     return {
       statusCode: 401,
-      body: JSON.stringify({ error: "No session" }),
+      body: JSON.stringify({ error: "Missing Authorization header" }),
     };
   }
 
-  // 3. Validate token with Supabase
+  const token = authHeader.replace("Bearer ", "").trim();
+  if (!token) {
+    return {
+      statusCode: 401,
+      body: JSON.stringify({ error: "Invalid Authorization header" }),
+    };
+  }
+
+  // 2. Validate token with Supabase
   const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
     headers: {
-      "apikey": SUPABASE_ANON_KEY,
-      "Authorization": `Bearer ${token}`,
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
     },
   });
 
@@ -36,7 +38,7 @@ exports.handler = async (event) => {
     };
   }
 
-  // 4. Valid session → return user
+  // 3. Valid session → return user
   return {
     statusCode: 200,
     body: JSON.stringify({ user: data }),

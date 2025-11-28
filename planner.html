@@ -16,14 +16,22 @@
 /* Store user globally */
 let CURRENT_USER = null;
 
-/* Helper to call Netlify functions */
-async function callNetlifyFunction(path, data) {
+// central helper used across index/planner/baseline
+async function callNetlifyFunction(path, data = {}) {
+  const token = localStorage.getItem('sessionToken') || (window.CURRENT_USER && window.CURRENT_USER.access_token);
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   const res = await fetch(`/.netlify/functions/${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(data),
   });
-  return res.json();
+
+  // protect against empty/non-json responses from server
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch (e) { throw new Error('Invalid JSON response from function: ' + text); }
 }
 
 /* Check session at load using stored values */
@@ -57,7 +65,6 @@ async function enforceLogin() {
 /* Run on page load */
 enforceLogin();
 </script>
-
 
 <style>
 :root { --navy:#0b4a8b; --accent:#0078d7; --light:#e6f2ff; }
@@ -956,21 +963,17 @@ async function requireUserOrThrow() {
   return user;
 }
 
-/* Save draft */
+/* SAVE DRAFT */
 async function saveDraftHandler() {
   try {
-    const user = await requireUserOrThrow(); // ensures user is logged in
+    await requireUserOrThrow(); 
     const title = prompt('Enter draft name:', 'Untitled');
     if (!title) return;
 
-    const payload = buildSaveObject(); // existing function to capture form/canvas data
+    const payload = buildSaveObject();
 
-    const res = await callNetlifyFunction('saveDraft', {
-      title,
-      data: payload
-    });
-
-    if (res.error) throw new Error(res.error);
+    const res = await callNetlifyFunction('saveDraft', { title, data: payload });
+    if (res.error) throw new Error(JSON.stringify(res.error));
 
     alert(`Draft "${title}" saved successfully.`);
   } catch (err) {
@@ -979,19 +982,18 @@ async function saveDraftHandler() {
   }
 }
 
-/* Load drafts into modal */
+
+/* LOAD DRAFTS INTO MODAL */
 async function loadDraftHandler() {
   try {
-    const user = await requireUserOrThrow(); // ensures user is logged in
+    await requireUserOrThrow();
 
-    // fetch drafts for this user
-    const res = await callNetlifyFunction('loadDrafts');
-    if (res.error) throw new Error(res.error);
+    const res = await callNetlifyFunction('loadDrafts', {});
+    if (res.error) throw new Error(JSON.stringify(res.error));
+
     const drafts = res.drafts || [];
-
     if (drafts.length === 0) return alert('No drafts found.');
 
-    // populate modal
     const modal = document.getElementById('draftModal');
     const listDiv = document.getElementById('draftList');
     listDiv.innerHTML = '';
@@ -1001,25 +1003,32 @@ async function loadDraftHandler() {
       row.className = 'draft-row';
 
       const label = document.createElement('div');
-      label.innerHTML = `<strong>${d.title}</strong><div class="small">${new Date(d.updated_at).toLocaleString()}</div>`;
+      label.innerHTML = `
+        <strong>${d.title}</strong>
+        <div class="small">${new Date(d.updated_at).toLocaleString()}</div>
+      `;
 
+      /* Load button */
       const loadBtn = document.createElement('button');
       loadBtn.textContent = 'Load';
-      loadBtn.addEventListener('click', async () => {
-        await loadDraftData(d.data); // your existing function to restore the draft
+      loadBtn.addEventListener('click', () => {
+        loadDraftData(d.data);
         modal.classList.remove('open');
       });
 
+      /* Delete button */
       const delBtn = document.createElement('button');
       delBtn.textContent = 'Delete';
       delBtn.addEventListener('click', async () => {
         if (!confirm(`Delete draft "${d.title}"?`)) return;
-        const delRes = await callNetlifyFunction('deleteDraft', { user_id: user.id, id: d.id });
-        if (delRes.error) { 
-          console.error('Delete draft error', delRes.error); 
+
+        const delRes = await callNetlifyFunction('deleteDraft', { id: d.id });
+        if (delRes.error) {
+          console.error('Delete draft error', delRes.error);
           return alert('Delete failed. See console.');
         }
-        row.remove();
+
+        row.remove(); // immediate UI update
       });
 
       row.appendChild(label);
@@ -1029,7 +1038,10 @@ async function loadDraftHandler() {
     });
 
     modal.classList.add('open');
-    document.getElementById('closeModal').onclick = () => modal.classList.remove('open');
+
+    // close button inside modal
+    const closeBtn = document.getElementById('closeModal');
+    if (closeBtn) closeBtn.onclick = () => modal.classList.remove('open');
 
   } catch (err) {
     console.error('loadDraftHandler error', err);
@@ -1040,7 +1052,6 @@ async function loadDraftHandler() {
 /* Wire buttons */
 document.getElementById('saveCloud').addEventListener('click', saveDraftHandler);
 document.getElementById('drafts').addEventListener('click', loadDraftHandler);
-
 
 /* ---------------------------
   Baseline button (open baseline)
@@ -1059,6 +1070,7 @@ updateExportButtonState();
 
 </body>
 </html>
+
 
 
 

@@ -50,25 +50,14 @@ exports.handler = async (event) => {
       };
     }
 
-    const token = data.access_token;
-
-    // ⭐ Save the session token in an HttpOnly cookie
-    const cookie = [
-      `sb_token=${token}`,
-      "HttpOnly",
-      "Secure",
-      "Path=/",
-      "SameSite=Lax",
-      "Max-Age=2592000" // 30 days
-    ].join("; ");
-
+    // --- Return user AND access_token so front-end can save session ---
     return {
       statusCode: 200,
-      headers: {
-        "Set-Cookie": cookie,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ user: data.user }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user: data.user,
+        access_token: data.access_token
+      }),
     };
   } catch (err) {
     return {

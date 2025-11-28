@@ -231,12 +231,6 @@ loginForm.addEventListener("submit", async (e) => {
   window.location.href = "planner.html";
 });
 
-  // ✅ Save session returned from Netlify login
-  storeSession(res);
-
-  window.location.href = "planner.html";
-});
-
 // --- Sign Up ---
 signupForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -250,8 +244,10 @@ signupForm.addEventListener("submit", async (e) => {
     return;
   }
 
-  // ✅ Save session returned from Netlify signup
-  storeSession(res);
+  // store session
+  localStorage.setItem("sessionToken", res.access_token);
+  localStorage.setItem("userSession", JSON.stringify(res.user));
+  window.CURRENT_USER = res.user;
 
   authMessage.style.color = "green";
   authMessage.textContent = "Sign-up successful! Redirecting...";
@@ -259,10 +255,11 @@ signupForm.addEventListener("submit", async (e) => {
     window.location.href = "planner.html";
   }, 1500);
 });
-
+  
 </script>
 
 </body>
 </html>
+
 
 

@@ -185,126 +185,174 @@ th { background:#f1f5f9; }
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 
-  // --- Helper: call Netlify functions ---
+  /* =========================================================================
+     Central Helper: Calls Netlify Functions (using Supabase session cookie)
+     ========================================================================= */
   async function callNetlifyFunction(path, data = {}) {
-    const token = localStorage.getItem('sessionToken') || (window.CURRENT_USER && window.CURRENT_USER.access_token);
-    const headers = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-
     const res = await fetch(`/.netlify/functions/${path}`, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
 
     const text = await res.text();
     try { return JSON.parse(text); }
-    catch(e) { throw new Error('Invalid JSON response from function: ' + text); }
+    catch {
+      throw new Error("Invalid JSON response from function: " + text);
+    }
   }
 
-  // --- Get current user ---
+  /* =========================================================================
+     Session: Get current user from Netlify get-session (cookie-based)
+     ========================================================================= */
   async function requireUserOrThrow() {
     if (window.CURRENT_USER) return window.CURRENT_USER;
 
-    const { user, error } = await callNetlifyFunction('get-session');
+    const { user, error } = await callNetlifyFunction("get-session");
+
     if (error || !user) {
-      alert('Please log in to continue.');
-      window.location.href = 'index.html';
-      throw new Error('User not logged in');
+      alert("Please log in to continue.");
+      window.location.href = "index.html";
+      throw new Error("User not logged in");
     }
 
     window.CURRENT_USER = user;
-    localStorage.setItem('userSession', JSON.stringify(user));
+    localStorage.setItem("userSession", JSON.stringify(user));
     return user;
   }
 
-  // --- Save draft ---
+  /* =========================================================================
+     SAVE DRAFT
+     ========================================================================= */
   async function saveDraft() {
     const user = await requireUserOrThrow();
 
     const formData = {};
-    document.querySelectorAll('input, select, textarea').forEach(el => {
+    document.querySelectorAll("input, select, textarea").forEach(el => {
       if (el.id) formData[el.id] = el.value;
     });
 
-    const draftName = prompt("Enter a name for this draft:", localStorage.getItem('currentDraftName') || '');
+    const draftName = prompt(
+      "Enter a name for this draft:",
+      localStorage.getItem("currentDraftName") || ""
+    );
     if (!draftName) return alert("Draft not saved: name is required.");
 
-    const draftId = localStorage.getItem('currentDraftId') || null;
+    const draftId = localStorage.getItem("currentDraftId") || null;
 
-    const res = await callNetlifyFunction('saveDraft', { draftId, user_id: user.id, draftName, formData });
-    if (res.error) return alert('Save failed: ' + JSON.stringify(res.error));
+    const res = await callNetlifyFunction("saveDraft", {
+      draftId,
+      user_id: user.id,
+      draftName,
+      formData
+    });
 
-    localStorage.setItem('currentDraftId', res.id || draftId);
-    localStorage.setItem('currentDraftName', draftName);
-    alert('Draft saved successfully!');
+    if (res.error) return alert("Save failed: " + JSON.stringify(res.error));
+
+    localStorage.setItem("currentDraftId", res.id || draftId);
+    localStorage.setItem("currentDraftName", draftName);
+
+    alert("Draft saved successfully!");
   }
 
-  // --- Load draft ---
+  /* =========================================================================
+     LOAD DRAFT
+     ========================================================================= */
   async function loadDraft() {
     const user = await requireUserOrThrow();
-    const { drafts, error } = await callNetlifyFunction('loadDrafts', { user_id: user.id });
-    if (error) return alert('Load failed: ' + JSON.stringify(error));
-    if (!drafts?.length) return alert('No saved drafts found.');
 
-    const draftNames = drafts.map(d => d.name).join('\n');
+    const { drafts, error } = await callNetlifyFunction("loadDrafts", {
+      user_id: user.id
+    });
+
+    if (error) return alert("Load failed: " + JSON.stringify(error));
+    if (!drafts?.length) return alert("No saved drafts found.");
+
+    const draftNames = drafts.map(d => d.name).join("\n");
     const name = prompt(`Select a draft to load by name:\n${draftNames}`);
     if (!name) return;
 
     const draft = drafts.find(d => d.name === name);
     if (!draft) return alert("Draft not found.");
 
-    localStorage.setItem('currentDraftId', draft.id);
-    localStorage.setItem('currentDraftName', draft.name);
+    localStorage.setItem("currentDraftId", draft.id);
+    localStorage.setItem("currentDraftName", draft.name);
 
     Object.entries(draft.form_data).forEach(([id, val]) => {
       const el = document.getElementById(id);
       if (el) el.value = val;
     });
 
-    alert('Draft loaded successfully.');
+    alert("Draft loaded successfully.");
   }
 
-  // --- Sign field ---
+  /* =========================================================================
+     SIGN FIELD
+     ========================================================================= */
   async function signField(fieldId) {
     const user = await requireUserOrThrow();
-    const button = document.querySelector(`.sign-btn[data-target="${fieldId}"]`);
-    const requiredRole = button?.getAttribute('data-role');
 
-    const { roles, error } = await callNetlifyFunction('getRoles', { userId: user.id });
-    if (error) return alert('Failed to fetch roles: ' + JSON.stringify(error));
+    const button = document.querySelector(
+      `.sign-btn[data-target="${fieldId}"]`
+    );
+    const requiredRole = button?.getAttribute("data-role");
+
+    const { roles, error } = await callNetlifyFunction("getRoles", {
+      userId: user.id
+    });
+
+    if (error)
+      return alert("Failed to fetch roles: " + JSON.stringify(error));
 
     if (requiredRole && !roles.includes(requiredRole)) {
-      return alert('You are not authorized to sign this field.');
+      return alert("You are not authorized to sign this field.");
     }
 
     const name = user.user_metadata?.full_name || user.email;
     const timestamp = new Date().toLocaleString();
+
     const field = document.getElementById(fieldId);
     if (field) {
       field.value = `Signed by ${name} on ${timestamp}`;
-      field.classList.add('signed');
+      field.classList.add("signed");
     }
+
     if (button) button.disabled = true;
 
-    const draftId = localStorage.getItem('currentDraftId');
-    if (!draftId) return alert('Please save draft first.');
+    const draftId = localStorage.getItem("currentDraftId");
+    if (!draftId) return alert("Please save draft first.");
 
-    const res = await callNetlifyFunction('saveSignature', {
+    const res = await callNetlifyFunction("saveSignature", {
       draftId,
       role: requiredRole,
-      signature: { user_id: user.id, name, email: user.email, timestamp }
+      signature: {
+        user_id: user.id,
+        name,
+        email: user.email,
+        timestamp
+      }
     });
 
-    if (res.error) alert('Failed to save signature: ' + JSON.stringify(res.error));
+    if (res.error)
+      alert("Failed to save signature: " + JSON.stringify(res.error));
   }
 
-  // --- Wire buttons ---
-  document.querySelectorAll('.sign-btn').forEach(btn => {
-    btn.addEventListener('click', () => signField(btn.getAttribute('data-target')));
+  /* =========================================================================
+     Wire up UI
+     ========================================================================= */
+  document.querySelectorAll(".sign-btn").forEach(btn => {
+    btn.addEventListener("click", () =>
+      signField(btn.getAttribute("data-target"))
+    );
   });
-  document.getElementById('saveDraft')?.addEventListener('click', saveDraft);
-  document.getElementById('loadDraft')?.addEventListener('click', loadDraft);
+
+  document
+    .getElementById("saveDraft")
+    ?.addEventListener("click", saveDraft);
+
+  document
+    .getElementById("loadDraft")
+    ?.addEventListener("click", loadDraft);
 
 });
 </script>
@@ -656,4 +704,5 @@ document.querySelectorAll('.sign-btn').forEach(btn => {
 
 </body>
 </html>
+
 

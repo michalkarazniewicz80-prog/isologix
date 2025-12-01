@@ -185,13 +185,13 @@ th { background:#f1f5f9; }
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 
-  /* --- Unified: Call Netlify Function --- */
+  /* --- Call Netlify function --- */
   async function callNetlifyFunction(path, data = {}) {
     const res = await fetch(`/.netlify/functions/${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
-      credentials: "include"   // <-- IMPORTANT: allow HttpOnly cookie to be sent
+      credentials: "include" // ensures HttpOnly cookie is sent
     });
 
     const text = await res.text();
@@ -199,26 +199,22 @@ document.addEventListener("DOMContentLoaded", () => {
     catch (e) { throw new Error("Invalid JSON response from function: " + text); }
   }
 
-  /* --- Unified: Require User (same as planner) --- */
+  /* --- Require logged-in user --- */
   async function requireUserOrThrow() {
-    // Already loaded?
     if (window.CURRENT_USER) return window.CURRENT_USER;
 
-    // Ask Netlify (reads Cookie EXACTLY like planner)
     const { user, error } = await callNetlifyFunction("get-session");
-
     if (error || !user) {
       window.location.href = "index.html";
       throw new Error("User not logged in");
     }
 
-    // Store user in shared format (same as planner)
     window.CURRENT_USER = user;
     localStorage.setItem("userSession", JSON.stringify(user));
     return user;
   }
 
-  /* --- Save Draft --- */
+  /* --- Save draft --- */
   async function saveDraft() {
     const user = await requireUserOrThrow();
 
@@ -227,9 +223,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (el.id) formData[el.id] = el.value;
     });
 
-    const draftName =
-      prompt("Enter a name for this draft:", localStorage.getItem("currentDraftName") || "");
-    if (!draftName) return alert("Draft not saved: name is required.");
+    const draftName = prompt("Enter draft name:", localStorage.getItem("currentDraftName") || "");
+    if (!draftName) return alert("Draft not saved: name required.");
 
     const draftId = localStorage.getItem("currentDraftId") || null;
 
@@ -244,20 +239,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     localStorage.setItem("currentDraftId", res.id || draftId);
     localStorage.setItem("currentDraftName", draftName);
-
     alert("Draft saved successfully!");
   }
 
-  /* --- Load Drafts --- */
+  /* --- Load draft --- */
   async function loadDraft() {
     const user = await requireUserOrThrow();
-
     const { drafts, error } = await callNetlifyFunction("loadDrafts", { user_id: user.id });
     if (error) return alert("Load failed: " + JSON.stringify(error));
-    if (!drafts?.length) return alert("No saved drafts found.");
+    if (!drafts?.length) return alert("No drafts found.");
 
     const draftNames = drafts.map(d => d.name).join("\n");
-    const name = prompt(`Select a draft to load by name:\n${draftNames}`);
+    const name = prompt(`Select draft by name:\n${draftNames}`);
     if (!name) return;
 
     const draft = drafts.find(d => d.name === name);
@@ -274,30 +267,25 @@ document.addEventListener("DOMContentLoaded", () => {
     alert("Draft loaded successfully.");
   }
 
-  /* --- Sign Field with Role Check --- */
+  /* --- Sign field --- */
   async function signField(fieldId) {
     const user = await requireUserOrThrow();
 
-    const button = document.querySelector(
-      `.sign-btn[data-target="${fieldId}"]`
-    );
+    const button = document.querySelector(`.sign-btn[data-target="${fieldId}"]`);
     const requiredRole = button?.getAttribute("data-role");
 
-    // Get roles (ensure function exists on Netlify)
-    const { roles, error } = await callNetlifyFunction("getRoles", {
-      userId: user.id
-    });
-
+    // fetch user roles
+    const { roles, error } = await callNetlifyFunction("getRoles", { userId: user.id });
     if (error) return alert("Failed to fetch roles: " + JSON.stringify(error));
     if (requiredRole && !roles.includes(requiredRole))
       return alert("You are not authorized to sign this field.");
 
     const name = user.user_metadata?.full_name || user.email;
-    const timestamp = new Date().toLocaleString();
+    const timestamp = new Date().toISOString();
 
     const field = document.getElementById(fieldId);
     if (field) {
-      field.value = `Signed by ${name} on ${timestamp}`;
+      field.value = `Signed by ${name} on ${new Date(timestamp).toLocaleString()}`;
       field.classList.add("signed");
     }
     if (button) button.disabled = true;
@@ -305,20 +293,28 @@ document.addEventListener("DOMContentLoaded", () => {
     const draftId = localStorage.getItem("currentDraftId");
     if (!draftId) return alert("Please save draft first.");
 
-    const res = await callNetlifyFunction("saveSignature", {
+    // directly update the column
+    const columnMap = {
+      isolationAuthorityField: "isolation_authority_signature",
+      hsseManagerField: "hsse_manager_signature",
+      operationsManagerField: "operations_manager_signature"
+    };
+    const columnName = columnMap[fieldId];
+    if (!columnName) return alert("Unknown signature column.");
+
+    const res = await callNetlifyFunction("updateDraftSignature", {
       draftId,
-      role: requiredRole,
+      columnName,
       signature: { user_id: user.id, name, email: user.email, timestamp }
     });
 
     if (res.error) alert("Failed to save signature: " + JSON.stringify(res.error));
   }
 
-  /* --- Wire Buttons --- */
+  /* --- Wire buttons --- */
   document.querySelectorAll(".sign-btn").forEach(btn => {
     btn.addEventListener("click", () => signField(btn.getAttribute("data-target")));
   });
-
   document.getElementById("saveDraft")?.addEventListener("click", saveDraft);
   document.getElementById("loadDraft")?.addEventListener("click", loadDraft);
 
@@ -672,6 +668,7 @@ document.querySelectorAll('.sign-btn').forEach(btn => {
 
 </body>
 </html>
+
 
 
 

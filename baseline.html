@@ -205,7 +205,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       CURRENT_USER = JSON.parse(userSession);
       return CURRENT_USER;
-    } catch (e) {
+    } catch {
       console.warn("⚠️ Invalid userSession");
       return null;
     }
@@ -239,29 +239,27 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* =====================================================
-     SAVE DRAFT (UNCHANGED FROM PLANNER)
+     SAVE DRAFT (IDENTICAL CONTRACT TO PLANNER)
   ===================================================== */
 
   async function saveDraft() {
     const user = getCurrentUser();
     if (!user) return alert("Please log in first.");
 
-    const formData = {};
+    const payload = {};
     document.querySelectorAll("input, select, textarea").forEach(el => {
-      if (el.id) formData[el.id] = el.value;
+      if (el.id) payload[el.id] = el.value;
     });
 
-    const draftName = prompt(
+    const title = prompt(
       "Enter a name for this draft:",
       localStorage.getItem("currentDraftName") || ""
     );
-
-    if (!draftName) return;
+    if (!title) return;
 
     const res = await callNetlifyFunction("saveDraft", {
-      user_id: user.id,
-      title: draftName,
-      data: formData
+      title,
+      data: payload
     });
 
     if (res.error) {
@@ -270,38 +268,36 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     localStorage.setItem("currentDraftId", res.id);
-    localStorage.setItem("currentDraftName", draftName);
+    localStorage.setItem("currentDraftName", title);
 
     alert("Draft saved successfully.");
   }
 
   /* =====================================================
-     LOAD DRAFTS
+     LOAD DRAFTS (MATCHES PLANNER RESPONSE)
   ===================================================== */
 
   async function loadDraft() {
     const user = getCurrentUser();
     if (!user) return alert("Please log in first.");
 
-    const { drafts, error } = await callNetlifyFunction("loadDrafts", {
-      user_id: user.id
-    });
+    const { drafts, error } = await callNetlifyFunction("loadDrafts");
 
     if (error || !drafts?.length) {
       return alert("No saved drafts found.");
     }
 
-    const names = drafts.map(d => d.name).join("\n");
+    const names = drafts.map(d => d.title).join("\n");
     const selected = prompt(`Select a draft:\n${names}`);
     if (!selected) return;
 
-    const draft = drafts.find(d => d.name === selected);
+    const draft = drafts.find(d => d.title === selected);
     if (!draft) return alert("Draft not found.");
 
     localStorage.setItem("currentDraftId", draft.id);
-    localStorage.setItem("currentDraftName", draft.name);
+    localStorage.setItem("currentDraftName", draft.title);
 
-    Object.entries(draft.form_data || {}).forEach(([id, value]) => {
+    Object.entries(draft.data || {}).forEach(([id, value]) => {
       const el = document.getElementById(id);
       if (el) el.value = value;
     });
@@ -310,7 +306,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /* =====================================================
-     SIGN FIELD (USES EXISTING DRAFT SAVE)
+     SIGN FIELD (ROLE CHECK + RESAVE)
   ===================================================== */
 
   async function signField(fieldId) {
@@ -320,7 +316,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const button = document.querySelector(
       `.sign-btn[data-target="${fieldId}"]`
     );
-
     const requiredRole = button?.getAttribute("data-role");
 
     if (requiredRole) {
@@ -344,7 +339,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (button) button.disabled = true;
 
-    // Save updated draft
+    // persist signature inside draft.data
     await saveDraft();
   }
 
@@ -711,6 +706,7 @@ document.querySelectorAll('.sign-btn').forEach(btn => {
 
 </body>
 </html>
+
 
 
 

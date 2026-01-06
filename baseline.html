@@ -327,7 +327,9 @@ document.addEventListener("DOMContentLoaded", () => {
     return alert("Failed to verify signing role.");
   }
 
-  const roleNames = roles.map(r => r.role);
+  const roleNames = Array.isArray(roles)
+    ? roles.map(role => (typeof role === "string" ? role : role.role))
+    : [];
 
   if (!roleNames.includes(requiredRole)) {
     return alert("You are not authorised to sign this field.");

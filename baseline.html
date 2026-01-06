@@ -319,14 +319,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const requiredRole = button?.getAttribute("data-role");
 
     if (requiredRole) {
-      const { roles, error } = await callNetlifyFunction("getRoles", {
-        userId: user.id
-      });
+  const { roles, error } = await callNetlifyFunction("getRoles", {
+    userId: user.id
+  });
 
-      if (error || !roles?.includes(requiredRole)) {
-        return alert("You are not authorised to sign this field.");
-      }
-    }
+  if (error || !roles) {
+    return alert("Failed to verify signing role.");
+  }
+
+  const roleNames = roles.map(r => r.role);
+
+  if (!roleNames.includes(requiredRole)) {
+    return alert("You are not authorised to sign this field.");
+  }
+}
 
     const field = document.getElementById(fieldId);
     if (!field) return;
@@ -706,6 +712,7 @@ document.querySelectorAll('.sign-btn').forEach(btn => {
 
 </body>
 </html>
+
 
 
 

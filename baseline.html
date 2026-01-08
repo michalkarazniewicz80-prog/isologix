@@ -693,13 +693,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll('#raSection input, #raSection textarea, #raSection select').forEach(el=> el.addEventListener('input', validateMandatory));
 
 
-// Wire buttons
-document.getElementById('saveDraft').addEventListener('click', saveDraft);
-document.getElementById('loadDraft').addEventListener('click', loadDraft);
-document.querySelectorAll('.sign-btn').forEach(btn => {
-  btn.addEventListener('click', () => signField(btn.getAttribute('data-target')));
-});
-
   // Initialize
   apply();
 })();

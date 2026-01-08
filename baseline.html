@@ -257,7 +257,7 @@ document.addEventListener("DOMContentLoaded", () => {
     );
     if (!title) return;
 
-    const res = await callNetlifyFunction("saveDraft", {
+    const res = await callNetlifyFunction("saveBaselineDraft", {
       title,
       data: payload
     });
@@ -281,7 +281,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const user = getCurrentUser();
     if (!user) return alert("Please log in first.");
 
-    const { drafts, error } = await callNetlifyFunction("loadDrafts");
+    const { drafts, error } = await callNetlifyFunction("loadBaselineDrafts");
 
     if (error || !drafts?.length) {
       return alert("No saved drafts found.");
@@ -692,13 +692,6 @@ document.addEventListener("DOMContentLoaded", () => {
   ;[selSub,selP,selS,selLoc,reqBaseline].forEach(s=> s && s.addEventListener('change', apply));
   document.querySelectorAll('#raSection input, #raSection textarea, #raSection select').forEach(el=> el.addEventListener('input', validateMandatory));
 
-
-// Wire buttons
-document.getElementById('saveDraft').addEventListener('click', saveDraft);
-document.getElementById('loadDraft').addEventListener('click', loadDraft);
-document.querySelectorAll('.sign-btn').forEach(btn => {
-  btn.addEventListener('click', () => signField(btn.getAttribute('data-target')));
-});
 
   // Initialize
   apply();

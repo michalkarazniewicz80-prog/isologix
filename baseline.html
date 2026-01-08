@@ -257,7 +257,7 @@ document.addEventListener("DOMContentLoaded", () => {
     );
     if (!title) return;
 
-    const res = await callNetlifyFunction("saveDraft", {
+    const res = await callNetlifyFunction("saveBaselineDraft", {
       title,
       data: payload
     });
@@ -281,7 +281,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const user = getCurrentUser();
     if (!user) return alert("Please log in first.");
 
-    const { drafts, error } = await callNetlifyFunction("loadDrafts");
+    const { drafts, error } = await callNetlifyFunction("loadBaselineDrafts");
 
     if (error || !drafts?.length) {
       return alert("No saved drafts found.");
@@ -327,7 +327,9 @@ document.addEventListener("DOMContentLoaded", () => {
     return alert("Failed to verify signing role.");
   }
 
-  const roleNames = roles.map(r => r.role);
+  const roleNames = Array.isArray(roles)
+    ? roles.map(role => (typeof role === "string" ? role : role.role))
+    : [];
 
   if (!roleNames.includes(requiredRole)) {
     return alert("You are not authorised to sign this field.");

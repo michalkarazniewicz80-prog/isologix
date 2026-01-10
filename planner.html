@@ -186,6 +186,11 @@ let tool='', activeSymbol='', annotations=[], drawing=false, currentLine=null, c
 const SYMBOLS = { valve: 'symbols/valve.png', flange: 'symbols/flange.png', hose_connection: 'symbols/hose_connection.png' };
 const BASE_PIN_RADIUS = 6, SYMBOL_SCALE = 0.42;
 let loadingImages = 0;
+function updateAnnotation(annoId, updates){
+  const target = annotations.find(a => a.annoId === annoId);
+  if (!target) return;
+  target.attrs = { ...(target.attrs || {}), ...updates };
+}
 function startLoad(){ loadingImages++; updateExportButtonState(); }
 function endLoad(){ loadingImages = Math.max(0, loadingImages-1); updateExportButtonState(); }
 function updateExportButtonState(){ document.getElementById('exportPDF').disabled = loadingImages > 0; }
@@ -436,8 +441,18 @@ function addTextAnnotation(x,y){
   const annoId = genAnnoId();
   group.setAttr('annoId', annoId);
   mainLayer.add(group); group.moveToTop(); mainLayer.batchDraw();
-  group.on('dblclick', ()=>{ const newVal = prompt('Edit annotation text:', text.text()); if(newVal!==null){ text.text(newVal); rect.width(text.width()+padding*2); rect.height(text.height()+padding*2); mainLayer.batchDraw(); } });
+  group.on('dblclick', ()=>{
+    const newVal = prompt('Edit annotation text:', text.text());
+    if(newVal!==null){
+      text.text(newVal);
+      rect.width(text.width()+padding*2);
+      rect.height(text.height()+padding*2);
+      updateAnnotation(annoId, { text: text.text() });
+      mainLayer.batchDraw();
+    }
+  });
   group.on('dragstart', ()=>group.moveToTop());
+  group.on('dragend', ()=>updateAnnotation(annoId, { x: group.x(), y: group.y() }));
   annotations.push({ annoId, type:'text', shapeType:'group', attrs:{ x:group.x(), y:group.y(), text: text.text() } });
 }
 

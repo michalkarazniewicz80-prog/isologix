@@ -10,8 +10,9 @@ exports.handler = async (event) => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return { statusCode: 500, body: JSON.stringify({ error: 'Missing Supabase env' }) };
 
     const body = JSON.parse(event.body || '{}');
-    const { title, data } = body;
-    if (!title || !data) return { statusCode: 400, body: JSON.stringify({ error: 'title and data required' }) };
+    const { title, data, form_data } = body;
+    const draftData = form_data ?? data;
+    if (!title || !draftData) return { statusCode: 400, body: JSON.stringify({ error: 'title and form_data required' }) };
 
     // Expect client's Authorization header: "Bearer <access_token>"
     const authHeader = event.headers['authorization'] || event.headers['Authorization'];
@@ -38,7 +39,7 @@ exports.handler = async (event) => {
     const payload = [{
       user_id,
       title,
-      data,
+      form_data: draftData,
       updated_at: new Date().toISOString()
     }];
 
@@ -60,7 +61,8 @@ exports.handler = async (event) => {
       return { statusCode: resp.status, body: JSON.stringify({ error: respJson }) };
     }
 
-    return { statusCode: 200, body: JSON.stringify({ success: true, saved: respJson }) };
+    const saved = Array.isArray(respJson) ? respJson[0] : respJson;
+    return { statusCode: 200, body: JSON.stringify({ success: true, saved, id: saved?.id }) };
   } catch (err) {
     console.error('saveBaselineDraft error', err);
     return { statusCode: 500, body: JSON.stringify({ error: err.message || 'server error' }) };

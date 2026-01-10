@@ -259,7 +259,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const res = await callNetlifyFunction("saveBaselineDraft", {
       title,
-      data: payload
+      form_data: payload
     });
 
     if (res.error) {
@@ -267,7 +267,8 @@ document.addEventListener("DOMContentLoaded", () => {
       return alert("Save failed.");
     }
 
-    localStorage.setItem("currentDraftId", res.id);
+    const draftId = res.id || res.saved?.id;
+    if (draftId) localStorage.setItem("currentDraftId", draftId);
     localStorage.setItem("currentDraftName", title);
 
     alert("Draft saved successfully.");

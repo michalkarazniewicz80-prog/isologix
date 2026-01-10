@@ -10,11 +10,8 @@ exports.handler = async (event) => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return { statusCode: 500, body: JSON.stringify({ error: 'Missing Supabase env' }) };
 
     const body = JSON.parse(event.body || '{}');
-    const { title, data, form_data } = body;
-    const payloadData = form_data || data;
-    if (!title || !payloadData) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'title and form_data required' }) };
-    }
+    const { title, data } = body;
+    if (!title || !data) return { statusCode: 400, body: JSON.stringify({ error: 'title and data required' }) };
 
     // Expect client's Authorization header: "Bearer <access_token>"
     const authHeader = event.headers['authorization'] || event.headers['Authorization'];
@@ -41,7 +38,7 @@ exports.handler = async (event) => {
     const payload = [{
       user_id,
       title,
-      form_data: payloadData,
+      data,
       updated_at: new Date().toISOString()
     }];
 

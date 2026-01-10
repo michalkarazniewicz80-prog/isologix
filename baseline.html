@@ -297,7 +297,7 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("currentDraftId", draft.id);
     localStorage.setItem("currentDraftName", draft.title);
 
-    Object.entries(draft.data || {}).forEach(([id, value]) => {
+    Object.entries(draft.form_data || {}).forEach(([id, value]) => {
       const el = document.getElementById(id);
       if (el) el.value = value;
     });

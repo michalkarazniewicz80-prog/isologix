@@ -319,6 +319,7 @@ stage.on('click', ()=>{
     const color = tool==='point' ? 'rgba(255,0,0,0.7)' : tool==='vent' ? 'rgba(0,200,0,0.7)' : 'rgba(0,0,255,0.7)';
     const id = getNextPinID();
     const c = new Konva.Circle({ x:pos.x, y:pos.y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
+    c.setAttr('id', id);
     const t = new Konva.Text({ x:pos.x+8, y:pos.y-12, text:String(id), fontSize:12, fill:'#111', listening:false });
     c.on('dragmove', ()=> t.position({ x: c.x()+8, y: c.y()-12 }) );
     // annotate with stable id
@@ -326,7 +327,7 @@ stage.on('click', ()=>{
     c.setAttr('annoId', annoId);
     t.setAttr('annoId', annoId);
     mainLayer.add(c); mainLayer.add(t);
-    annotations.push({ annoId, id, type:tool, shapeType:'circle', attrs: { x: c.x(), y: c.y(), radius: BASE_PIN_RADIUS, fill: color, stroke:'#111', strokeWidth:1 } });
+    annotations.push({ annoId, id, type:tool, shapeType:'circle', attrs: { id, x: c.x(), y: c.y(), radius: BASE_PIN_RADIUS, fill: color, stroke:'#111', strokeWidth:1 } });
     addPointRow(id, tool, c);
     mainLayer.batchDraw();
     return;
@@ -559,9 +560,28 @@ document.getElementById('exportPDF')?.addEventListener('click', async () => {
     }
 
     // Add annotations
+    const circleLabels = new Set(
+      annotations
+        .filter(a => a.shapeType === 'circle')
+        .map(a => a.id ?? a.attrs?.id)
+        .filter(Boolean)
+        .map(val => String(val))
+    );
+
     annotations.forEach(a => {
       if (a.shapeType === 'circle') {
         exportLayer.add(new Konva.Circle(a.attrs));
+        const label = a.id ?? a.attrs?.id;
+        if (label) {
+          exportLayer.add(new Konva.Text({
+            x: (a.attrs?.x || 0) + 8,
+            y: (a.attrs?.y || 0) - 12,
+            text: String(label),
+            fontSize: 12,
+            fill: '#111',
+            listening: false
+          }));
+        }
       } else if (a.shapeType === 'line') {
         exportLayer.add(new Konva.Line({ points: a.points, ...a.attrs }));
       } else if (a.shapeType === 'image') {
@@ -569,6 +589,11 @@ document.getElementById('exportPDF')?.addEventListener('click', async () => {
           const img = new Image();
           img.src = a.src;
           exportLayer.add(new Konva.Image({ image: img, ...a.attrs }));
+        }
+      } else if (a.shapeType === 'text') {
+        const textValue = a.attrs?.text ?? '';
+        if (!circleLabels.has(String(textValue))) {
+          exportLayer.add(new Konva.Text(a.attrs));
         }
       } else if (a.shapeType === 'group') {
         exportLayer.add(new Konva.Text({ text: a.attrs.text || '', x: a.attrs.x || 0, y: a.attrs.y || 0, fontSize: 14, fill: '#111' }));

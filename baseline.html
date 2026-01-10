@@ -258,6 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!title) return;
 
     const res = await callNetlifyFunction("saveBaselineDraft", {
+      id: localStorage.getItem("currentDraftId"),
       title,
       form_data: payload
     });
@@ -288,15 +289,22 @@ document.addEventListener("DOMContentLoaded", () => {
       return alert("No saved drafts found.");
     }
 
-    const names = drafts.map(d => d.title).join("\n");
+    const names = drafts
+      .map(d => d.form_data?.draft_title || d.title || "Untitled draft")
+      .join("\n");
     const selected = prompt(`Select a draft:\n${names}`);
     if (!selected) return;
 
-    const draft = drafts.find(d => d.title === selected);
+    const draft = drafts.find(
+      d => (d.form_data?.draft_title || d.title || "Untitled draft") === selected
+    );
     if (!draft) return alert("Draft not found.");
 
     localStorage.setItem("currentDraftId", draft.id);
-    localStorage.setItem("currentDraftName", draft.title);
+    localStorage.setItem(
+      "currentDraftName",
+      draft.form_data?.draft_title || draft.title || "Untitled draft"
+    );
 
     Object.entries(draft.form_data || {}).forEach(([id, value]) => {
       const el = document.getElementById(id);

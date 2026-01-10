@@ -10,9 +10,10 @@ exports.handler = async (event) => {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return { statusCode: 500, body: JSON.stringify({ error: 'Missing Supabase env' }) };
 
     const body = JSON.parse(event.body || '{}');
-    const { title, data, form_data } = body;
+    const { title, data, form_data, id } = body;
     const draftData = form_data ?? data;
     if (!title || !draftData) return { statusCode: 400, body: JSON.stringify({ error: 'title and form_data required' }) };
+    if (!draftData.draft_title) draftData.draft_title = title;
 
     // Expect client's Authorization header: "Bearer <access_token>"
     const authHeader = event.headers['authorization'] || event.headers['Authorization'];
@@ -36,25 +37,36 @@ exports.handler = async (event) => {
     if (!user_id) return { statusCode: 401, body: JSON.stringify({ error: 'Unable to get user id' }) };
 
     // 2) Upsert via PostgREST; forward the user's JWT to have RLS apply as that user
-    const payload = [{
+    const payload = {
       user_id,
-      title,
       form_data: draftData,
       updated_at: new Date().toISOString()
-    }];
+    };
 
-    // on_conflict param for upsert by user_id + title
-    const url = `${SUPABASE_URL}/rest/v1/drafts?on_conflict=user_id,title`;
-    const resp = await fetch(url, {
-      method: 'POST',
+    const requestConfig = {
       headers: {
         'Content-Type': 'application/json',
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${token}`,
-        'Prefer': 'return=representation, resolution=merge-duplicates'
+        'Prefer': 'return=representation'
       },
       body: JSON.stringify(payload)
-    });
+    };
+
+    let resp;
+    if (id) {
+      const url = `${SUPABASE_URL}/rest/v1/drafts?id=eq.${encodeURIComponent(id)}`;
+      resp = await fetch(url, {
+        method: 'PATCH',
+        ...requestConfig
+      });
+    } else {
+      const url = `${SUPABASE_URL}/rest/v1/drafts`;
+      resp = await fetch(url, {
+        method: 'POST',
+        ...requestConfig
+      });
+    }
 
     const respJson = await resp.json();
     if (!resp.ok) {

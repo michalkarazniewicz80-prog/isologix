@@ -30,7 +30,7 @@ exports.handler = async (event) => {
     if (!user_id) return { statusCode: 401, body: JSON.stringify({ error: 'Unable to get user id' }) };
 
     // Now fetch drafts for that user (RLS will also apply)
-    const url = `${SUPABASE_URL}/rest/v1/drafts?user_id=eq.${encodeURIComponent(user_id)}&select=id,title,data,updated_at&order=updated_at.desc`;
+    const url = `${SUPABASE_URL}/rest/v1/drafts?user_id=eq.${encodeURIComponent(user_id)}&select=id,form_data,updated_at&order=updated_at.desc`;
     const resp = await fetch(url, {
       method: 'GET',
       headers: {

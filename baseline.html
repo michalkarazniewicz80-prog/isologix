@@ -31,6 +31,19 @@ body {
   flex-direction: column;
   min-height: 100vh;
 }
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin: -12px 0 12px;
+}
+.user-menu{display:flex;align-items:center;position:relative;}
+.user-menu__button{border:0;background:transparent;padding:0;cursor:pointer;}
+.user-avatar{width:34px;height:34px;border-radius:50%;background:#1F4E79;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 0 0 2px #e2e8f0;}
+.user-menu__dropdown{position:absolute;top:44px;right:0;min-width:200px;background:#fff;border:1px solid var(--grid);border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.15);padding:10px;display:none;flex-direction:column;gap:8px;z-index:210;}
+.user-menu__dropdown.open{display:flex;}
+.user-menu__email{font-size:13px;color:#1F4E79;font-weight:600;word-break:break-all;}
+.user-menu__signout{border:1px solid #1F4E79;background:#fde68a;color:#1F4E79;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;}
 
 /* ---------- Headings ---------- */
 h1 { font-size: 1.3rem; margin: 0 0 16px; text-align:center; color:var(--head-bg);}
@@ -193,6 +206,18 @@ th { background:#f1f5f9; }
 </head>
 <body>
 
+<header class="topbar">
+  <div class="user-menu" id="userMenu" style="display:none;">
+    <button class="user-menu__button" id="userMenuButton" type="button" aria-haspopup="true" aria-expanded="false">
+      <span class="user-avatar" id="userInitial">U</span>
+    </button>
+    <div class="user-menu__dropdown" id="userDropdown" role="menu">
+      <div class="user-menu__email" id="userEmail"></div>
+      <button class="user-menu__signout" id="signOutBtn" type="button">Sign out</button>
+    </div>
+  </div>
+</header>
+
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 
@@ -201,6 +226,40 @@ document.addEventListener("DOMContentLoaded", () => {
   ===================================================== */
 
   let CURRENT_USER = null;
+
+  function getInitials(email = "") {
+    const trimmed = email.trim();
+    return trimmed ? trimmed[0].toUpperCase() : "?";
+  }
+
+  function updateUserMenu(user) {
+    const menu = document.getElementById("userMenu");
+    const emailEl = document.getElementById("userEmail");
+    const initialEl = document.getElementById("userInitial");
+    if (!menu) return;
+    if (user && user.email) {
+      if (emailEl) emailEl.textContent = user.email;
+      if (initialEl) initialEl.textContent = getInitials(user.email);
+      menu.style.display = "flex";
+    } else {
+      menu.style.display = "none";
+    }
+  }
+
+  function closeUserDropdown() {
+    const dropdown = document.getElementById("userDropdown");
+    const button = document.getElementById("userMenuButton");
+    if (dropdown) dropdown.classList.remove("open");
+    if (button) button.setAttribute("aria-expanded", "false");
+  }
+
+  function logoutUser() {
+    localStorage.removeItem("userSession");
+    localStorage.removeItem("sessionToken");
+    localStorage.removeItem("currentDraftId");
+    localStorage.removeItem("currentDraftName");
+    window.location.href = "index.html";
+  }
 
   function getCurrentUser() {
     if (CURRENT_USER) return CURRENT_USER;
@@ -221,6 +280,34 @@ document.addEventListener("DOMContentLoaded", () => {
       return null;
     }
   }
+
+  const menuButton = document.getElementById("userMenuButton");
+  const menuDropdown = document.getElementById("userDropdown");
+  const signOutBtn = document.getElementById("signOutBtn");
+
+  if (menuButton && menuDropdown) {
+    menuButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const isOpen = menuDropdown.classList.toggle("open");
+      menuButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    if (!menuDropdown || !menuButton) return;
+    if (!menuDropdown.contains(event.target) && !menuButton.contains(event.target)) {
+      closeUserDropdown();
+    }
+  });
+
+  if (signOutBtn) {
+    signOutBtn.addEventListener("click", () => {
+      closeUserDropdown();
+      logoutUser();
+    });
+  }
+
+  updateUserMenu(getCurrentUser());
 
   /* =====================================================
      CALL NETLIFY FUNCTION (MATCHES PLANNER)

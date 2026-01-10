@@ -16,6 +16,40 @@
 /* Store user globally */
 let CURRENT_USER = null;
 
+function getInitials(email = "") {
+  const trimmed = email.trim();
+  return trimmed ? trimmed[0].toUpperCase() : "?";
+}
+
+function updateUserMenu(user) {
+  const menu = document.getElementById("userMenu");
+  const emailEl = document.getElementById("userEmail");
+  const initialEl = document.getElementById("userInitial");
+  if (!menu) return;
+  if (user && user.email) {
+    if (emailEl) emailEl.textContent = user.email;
+    if (initialEl) initialEl.textContent = getInitials(user.email);
+    menu.style.display = "flex";
+  } else {
+    menu.style.display = "none";
+  }
+}
+
+function closeUserDropdown() {
+  const dropdown = document.getElementById("userDropdown");
+  const button = document.getElementById("userMenuButton");
+  if (dropdown) dropdown.classList.remove("open");
+  if (button) button.setAttribute("aria-expanded", "false");
+}
+
+function logoutUser() {
+  localStorage.removeItem("userSession");
+  localStorage.removeItem("sessionToken");
+  localStorage.removeItem("currentDraftId");
+  localStorage.removeItem("currentDraftName");
+  window.location.href = "index.html";
+}
+
 // central helper used across index/planner/baseline
 async function callNetlifyFunction(path, data = {}) {
   const token = localStorage.getItem('sessionToken') || (window.CURRENT_USER && window.CURRENT_USER.access_token);
@@ -55,12 +89,42 @@ async function enforceLogin() {
     }
 
     CURRENT_USER = user;
-    document.getElementById("userEmail").textContent = CURRENT_USER.email;
+    updateUserMenu(CURRENT_USER);
 
   } catch (e) {
     console.error("Session check failed:", e);
   }
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  const button = document.getElementById("userMenuButton");
+  const dropdown = document.getElementById("userDropdown");
+  const signOut = document.getElementById("signOutBtn");
+
+  if (button && dropdown) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const isOpen = dropdown.classList.toggle("open");
+      button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    if (!dropdown || !button) return;
+    if (!dropdown.contains(event.target) && !button.contains(event.target)) {
+      closeUserDropdown();
+    }
+  });
+
+  if (signOut) {
+    signOut.addEventListener("click", () => {
+      closeUserDropdown();
+      logoutUser();
+    });
+  }
+
+  updateUserMenu(CURRENT_USER);
+});
 
 /* Run on page load */
 enforceLogin();
@@ -84,6 +148,13 @@ input[type=file]{display:none;}
 #pointsTable th:first-child,#pointsTable td:first-child,#deisoTable th:first-child,#deisoTable td:first-child{width:40px;text-align:center;}
 .tools-left{display:flex;gap:8px;align-items:center;}
 footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-size:12px;color:#666;border-top:1px solid #ccc;}
+.user-menu{display:flex;align-items:center;position:relative;}
+.user-menu__button{border:0;background:transparent;padding:0;cursor:pointer;}
+.user-avatar{width:34px;height:34px;border-radius:50%;background:#0b4a8b;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 0 0 2px #e6f2ff;}
+.user-menu__dropdown{position:absolute;top:44px;right:0;min-width:200px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.15);padding:10px;display:none;flex-direction:column;gap:8px;z-index:210;}
+.user-menu__dropdown.open{display:flex;}
+.user-menu__email{font-size:13px;color:#0b4a8b;font-weight:600;word-break:break-all;}
+.user-menu__signout{border:1px solid #0b4a8b;background:#ffd700;color:#0b4a8b;font-weight:700;padding:6px 10px;border-radius:6px;cursor:pointer;}
 /* Draft modal */
 #draftModal { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; justify-content: center; align-items: center; z-index: 9999; }
 #draftModal.open { display:flex; }
@@ -106,14 +177,16 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
   <!-- spacer pushes logo + user section to the right -->
   <div style="flex:1;"></div>
 
-  <!-- USER STATUS + LOGOUT -->
-  <div id="userBox" style="font-size:14px; color:#0b4a8b; font-weight:600; margin-right:15px; display:none;">
-    Logged in as <span id="userEmail"></span>
+  <!-- USER MENU -->
+  <div class="user-menu" id="userMenu" style="display:none;">
+    <button class="user-menu__button" id="userMenuButton" type="button" aria-haspopup="true" aria-expanded="false">
+      <span class="user-avatar" id="userInitial">U</span>
+    </button>
+    <div class="user-menu__dropdown" id="userDropdown" role="menu">
+      <div class="user-menu__email" id="userEmail"></div>
+      <button class="user-menu__signout" id="signOutBtn" type="button">Sign out</button>
+    </div>
   </div>
-
-  <button id="logoutBtn" style="display:none;background:#ffd700;border:1px solid #0b4a8b;color:#0b4a8b;font-weight:700;padding:6px 12px;border-radius:6px;cursor:pointer;">
-    Logout
-  </button>
 
   <img src="isologix.png" alt="isologix" class="logo">
 </div>

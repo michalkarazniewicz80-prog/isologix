@@ -169,6 +169,17 @@ th { background:#f1f5f9; }
   .legend-cols{grid-template-columns:1fr;}
 }
 
+/* ---------- Draft Modal ---------- */
+#draftModal { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; justify-content: center; align-items: center; z-index: 9999; }
+#draftModal.open { display:flex; }
+#draftModalContent { background:#fff; border-radius:8px; padding:20px; width:420px; max-height:80vh; overflow:auto; }
+#draftModalContent h3 { margin-top:0; }
+.draft-list { display:grid; gap:8px; }
+.draft-entry { display:flex; flex-direction:column; align-items:flex-start; gap:4px; width:100%; text-align:left; border:1px solid var(--grid); background:#f8fafc; color:#0f172a; padding:10px 12px; border-radius:8px; }
+.draft-entry:hover { background:#eef2f7; }
+.draft-name { font-weight:700; }
+.draft-date { font-size:12px; color:var(--muted); }
+
 /* ---------- Print ---------- */
 @media print{
   body{padding:0;}
@@ -289,29 +300,40 @@ document.addEventListener("DOMContentLoaded", () => {
       return alert("No saved drafts found.");
     }
 
-    const names = drafts
-      .map(d => d.form_data?.draft_title || d.title || "Untitled draft")
-      .join("\n");
-    const selected = prompt(`Select a draft:\n${names}`);
-    if (!selected) return;
+    const modal = document.getElementById("draftModal");
+    const list = document.getElementById("draftList");
+    list.innerHTML = "";
 
-    const draft = drafts.find(
-      d => (d.form_data?.draft_title || d.title || "Untitled draft") === selected
-    );
-    if (!draft) return alert("Draft not found.");
+    drafts.forEach(draft => {
+      const name = draft.form_data?.draft_title || draft.title || "Untitled draft";
+      const updatedAt = draft.updated_at
+        ? new Date(draft.updated_at).toLocaleString()
+        : "Saved draft";
 
-    localStorage.setItem("currentDraftId", draft.id);
-    localStorage.setItem(
-      "currentDraftName",
-      draft.form_data?.draft_title || draft.title || "Untitled draft"
-    );
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "draft-entry";
+      button.innerHTML = `<span class="draft-name">${name}</span><span class="draft-date">${updatedAt}</span>`;
+      button.addEventListener("click", () => {
+        localStorage.setItem("currentDraftId", draft.id);
+        localStorage.setItem("currentDraftName", name);
 
-    Object.entries(draft.form_data || {}).forEach(([id, value]) => {
-      const el = document.getElementById(id);
-      if (el) el.value = value;
+        Object.entries(draft.form_data || {}).forEach(([id, value]) => {
+          const el = document.getElementById(id);
+          if (el) el.value = value;
+        });
+
+        modal.classList.remove("open");
+        alert("Draft loaded.");
+      });
+
+      list.appendChild(button);
     });
 
-    alert("Draft loaded.");
+    modal.classList.add("open");
+
+    const closeBtn = document.getElementById("closeDraftModal");
+    if (closeBtn) closeBtn.onclick = () => modal.classList.remove("open");
   }
 
   /* =====================================================
@@ -541,10 +563,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
       <div class="body actions">
         <button type="button" id="saveDraft" class="secondary">Save Draft</button>
-	<button type="button" id="loadDraft" class="secondary">Load Draft</button>
+        <button type="button" id="loadDraft" class="secondary">Load Draft</button>
         <button type="button" id="exportDoc">Print / Save as PDF</button>
       </div>
     </section>
+  </div>
+
+  <div id="draftModal">
+    <div id="draftModalContent" role="dialog" aria-modal="true">
+      <h3>Saved Drafts</h3>
+      <div id="draftList" class="draft-list" aria-live="polite"></div>
+      <div style="text-align:right; margin-top:12px;">
+        <button id="closeDraftModal" type="button">Close</button>
+      </div>
+    </div>
   </div>
 
 <script>

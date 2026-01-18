@@ -761,20 +761,32 @@ document.addEventListener("DOMContentLoaded", () => {
     const pdf = new jsPdfCtor({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const margin = 12;
     const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
     const contentWidth = pageWidth - margin * 2;
     let cursorY = margin;
 
+    const ensureSpace = (neededHeight = 10) => {
+      if (cursorY + neededHeight > pageHeight - margin) {
+        pdf.addPage();
+        cursorY = margin;
+      }
+    };
+
     const addTitle = (text) => {
+      ensureSpace(10);
       pdf.setFontSize(14);
       pdf.text(text, margin, cursorY);
       cursorY += 6;
     };
 
     const addLabelValueTable = (rows) => {
+      ensureSpace(18);
       pdf.autoTable({
         startY: cursorY,
         theme: 'grid',
         styles: { fontSize: 10, cellPadding: 2 },
+        pageBreak: 'auto',
+        margin: { left: margin, right: margin },
         columnStyles: {
           0: { cellWidth: contentWidth * 0.32, fontStyle: 'bold' },
           1: { cellWidth: contentWidth * 0.68 }
@@ -845,6 +857,8 @@ document.addEventListener("DOMContentLoaded", () => {
       startY: cursorY,
       theme: 'grid',
       styles: { fontSize: 9, cellPadding: 1.5 },
+      pageBreak: 'auto',
+      margin: { left: margin, right: margin },
       head: [['Step', 'Hazard', 'Cause', 'Consequence', 'Existing Safeguards', 'Likelihood', 'Consequence', 'Risk', 'Additional Controls', 'Residual Risk']],
       body: riskRows.length ? riskRows : [['', '', '', '', '', '', '', '', '', '']]
     });
@@ -859,6 +873,8 @@ document.addEventListener("DOMContentLoaded", () => {
       startY: cursorY,
       theme: 'grid',
       styles: { fontSize: 10, cellPadding: 2 },
+      pageBreak: 'auto',
+      margin: { left: margin, right: margin },
       head: [['Control Item', 'Yes / No / N/A']],
       body: checklistRows
     });
@@ -883,6 +899,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ]);
 
     pdf.setFontSize(9);
+    ensureSpace(12);
     const footerLines = pdf.splitTextToSize(
       'This form is for temporary deviation from the baseline isolation determined by the tool and must be authorised.',
       contentWidth

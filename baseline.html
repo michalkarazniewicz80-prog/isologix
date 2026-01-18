@@ -126,6 +126,8 @@ table { width:100%; border-collapse:collapse; }
 th, td { border:1px solid var(--grid); padding:6px; vertical-align:top; }
 th { background:#f1f5f9; }
 .table-actions { display:flex; gap:8px; margin-top:8px; }
+.table-scroll { overflow-x:auto; max-width:100%; }
+.table-scroll table { min-width: 720px; }
 
 /* ---------- Legends ---------- */
 .legend-cols { display:grid; grid-template-columns:repeat(2,minmax(240px,1fr)); gap:14px; }
@@ -548,7 +550,6 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="body">
         <div id="nonConfBanner" class="banner">
           Baseline is non-conformant with the requested standard. Complete the Risk Assessment below. Export is disabled until mandatory fields are complete.
-          <button type="button" id="toggleRA" class="secondary" style="margin-left:12px; display:none;">Show Risk Assessment</button>
         </div>
       </div>
     </section>
@@ -598,7 +599,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </label><textarea id="monitor" required placeholder="e.g., Pressure gauge reading every hour by operator; continuous gas detector monitoring"></textarea></div>
       </div>
 
-      <div class="body">
+      <div class="body table-scroll">
         <h3 style="margin:0 0 8px">4) Task-specific Risk Assessment</h3>
         <table id="riskTable" aria-label="Risk register">
           <thead><tr><th class="col-text">Step</th><th class="col-text">Hazard</th><th class="col-text">Consequence</th><th class="col-text">Existing Safeguards</th><th class="col-lik">Likelihood</th><th class="col-sev">Severity</th><th class="col-risk">Risk</th><th class="col-text">Additional Controls</th><th class="col-residual">Residual Risk</th></tr></thead>
@@ -610,7 +611,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
       </div>
 
-      <div class="body">
+      <div class="body table-scroll">
         <h3 style="margin:0 0 8px">5) Temporary Controls Checklist</h3>
         <table id="chkTable"><thead><tr><th>Control Item</th><th style="width:10rem">Yes / No / N/A</th></tr></thead>
           <tbody>
@@ -705,8 +706,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const reqBaseline=$('requestedBaseline');
   const nonConfBanner=$('nonConfBanner');
   const raSection=$('raSection');
-  const toggleRA=$('toggleRA');
-  let raExpanded=false;
 
   const GREEN=getVar('--green'), AMBER=getVar('--amber'), RED=getVar('--red');
   function getVar(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim();}
@@ -1036,24 +1035,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const rel=calcRelease(); const loc=selLoc.value||null; const out=calcOutcome(rel,loc); const base=calcIsolation(selSub.value,out);
       setBadge(tRelease,dRelease,rel,colourLMH(rel)); setBadge(tLocation,dLocation,loc,colourLMH(loc)); setBadge(tOutcome,dOutcome,out,'#e5e7eb'); setBadge(tBaseline,dBaseline,base,'#e5e7eb');
       const requested=reqBaseline.value||''; const nonConformant=(base === 'R') || (requested && base && (requested!==base));
-      nonConfBanner.style.display=nonConformant?'block':'none';
-      if(toggleRA){
-        toggleRA.style.display=nonConformant?'inline-flex':'none';
-        if(!nonConformant){ raExpanded=false; toggleRA.textContent='Show Risk Assessment'; }
-      }
-      raSection.hidden=!raExpanded;
-      if(nonConformant && raExpanded){ wireRAButtons(); ensureAtLeastOneRow(); }
+      nonConfBanner.style.display=nonConformant?'block':'none'; raSection.hidden=!nonConformant;
+      if(nonConformant){ wireRAButtons(); ensureAtLeastOneRow(); }
       validateMandatory();
     }catch(e){ console.error(e); }
   }
 
-  toggleRA?.addEventListener('click', () => {
-    raExpanded=!raExpanded;
-    if(toggleRA){ toggleRA.textContent=raExpanded?'Hide Risk Assessment':'Show Risk Assessment'; }
-    raSection.hidden=!raExpanded;
-    if(raExpanded){ wireRAButtons(); ensureAtLeastOneRow(); }
-    validateMandatory();
-  });
   document.getElementById('apply').addEventListener('click', apply);
   document.getElementById('reset').addEventListener('click', ()=>{ [selSub,selP,selS,selLoc,reqBaseline].forEach(s=>{ if(s) s.selectedIndex=0}); apply(); });
   ;[selSub,selP,selS,selLoc,reqBaseline].forEach(s=> s && s.addEventListener('change', apply));

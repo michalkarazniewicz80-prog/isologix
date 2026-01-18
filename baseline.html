@@ -942,16 +942,19 @@ document.addEventListener("DOMContentLoaded", () => {
     addTitle('Risk Assessment');
     const riskRows = Array.from(riskTableBody.querySelectorAll('tr')).map(tr => {
       const cells = tr.querySelectorAll('td');
+      const likSelect = tr.querySelector('.lik');
+      const conSelect = tr.querySelector('.con');
+      const residualSelect = tr.querySelector('.residual');
       return [
         cells[0]?.innerText || '',
         cells[1]?.innerText || '',
         cells[2]?.innerText || '',
         cells[3]?.innerText || '',
-        tr.querySelector('.lik')?.value || '',
-        tr.querySelector('.con')?.value || '',
+        likSelect?.selectedOptions?.[0]?.textContent || '',
+        conSelect?.selectedOptions?.[0]?.textContent || '',
         tr.querySelector('.pill')?.textContent || '',
         cells[7]?.innerText || '',
-        tr.querySelector('.residual')?.value || ''
+        residualSelect?.selectedOptions?.[0]?.textContent || ''
       ];
     });
 

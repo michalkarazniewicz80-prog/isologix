@@ -59,8 +59,8 @@ h2 { margin:0; font-size:1rem; padding:10px 12px; background:var(--head-bg); col
 .three { grid-template-columns:repeat(3,minmax(220px,1fr)); }
 
 /* ---------- Panels ---------- */
-.panel { background:#fff; border:1px solid var(--grid); border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
-.panel .body { padding:12px; }
+.panel { background:#fff; border:1px solid var(--grid); border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.06); max-width:100%; }
+.panel .body { padding:12px; min-width:0; }
 
 /* ---------- Fields ---------- */
 .field { display:flex; flex-direction:column; gap:6px; }
@@ -126,7 +126,7 @@ table { width:100%; border-collapse:collapse; }
 th, td { border:1px solid var(--grid); padding:6px; vertical-align:top; }
 th { background:#f1f5f9; }
 .table-actions { display:flex; gap:8px; margin-top:8px; }
-.table-scroll { overflow-x:auto; max-width:100%; }
+.table-scroll { overflow-x:auto; max-width:100%; width:100%; }
 .table-scroll table { min-width: 720px; }
 
 /* ---------- Legends ---------- */

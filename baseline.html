@@ -116,6 +116,13 @@ button.secondary { border-color:#cbd5e1; background:#f8fafc; color:#0f172a; }
 
 /* ---------- Tables ---------- */
 table { width:100%; border-collapse:collapse; }
+#riskTable { table-layout: fixed; }
+#riskTable th.col-text { width: 12rem; }
+#riskTable th.col-lik,
+#riskTable th.col-sev,
+#riskTable th.col-residual { width: 5.5rem; }
+#riskTable th.col-risk { width: 6.5rem; }
+#riskTable select { width: 100%; min-width: 0; }
 th, td { border:1px solid var(--grid); padding:6px; vertical-align:top; }
 th { background:#f1f5f9; }
 .table-actions { display:flex; gap:8px; margin-top:8px; }
@@ -589,7 +596,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="body">
         <h3 style="margin:0 0 8px">4) Task-specific Risk Assessment</h3>
         <table id="riskTable" aria-label="Risk register">
-          <thead><tr><th style="width:10rem">Step</th><th style="width:10rem">Hazard</th><th style="width:10rem">Consequence</th><th style="width:10rem">Existing Safeguards</th><th style="width:6rem">Likelihood</th><th style="width:6rem">Severity</th><th style="width:6.5rem">Risk</th><th style="width:12rem">Additional Controls</th><th style="width:6rem">Residual Risk</th></tr></thead>
+          <thead><tr><th class="col-text">Step</th><th class="col-text">Hazard</th><th class="col-text">Consequence</th><th class="col-text">Existing Safeguards</th><th class="col-lik">Likelihood</th><th class="col-sev">Severity</th><th class="col-risk">Risk</th><th class="col-text">Additional Controls</th><th class="col-residual">Residual Risk</th></tr></thead>
           <tbody></tbody>
         </table>
         <div class="table-actions">

@@ -10,6 +10,7 @@
 :root{
   --green:#22C55E;
   --amber:#F59E0B;
+  --orange:#F97316;
   --red:#EF4444;
   --ink:#1f2937;
   --grid:#CBD5E1;
@@ -99,6 +100,7 @@ button.secondary { border-color:#cbd5e1; background:#f8fafc; color:#0f172a; }
 .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-weight:700; color:#fff; }
 .pill.green{background:var(--green);}
 .pill.amber{background:var(--amber);}
+.pill.orange{background:var(--orange);}
 .pill.red{background:var(--red);}
 
 /* ---------- Rows / Results ---------- */
@@ -114,6 +116,13 @@ button.secondary { border-color:#cbd5e1; background:#f8fafc; color:#0f172a; }
 
 /* ---------- Tables ---------- */
 table { width:100%; border-collapse:collapse; }
+#riskTable { table-layout: fixed; }
+#riskTable th.col-text { width: 12rem; }
+#riskTable th.col-lik,
+#riskTable th.col-sev,
+#riskTable th.col-residual { width: 5.5rem; }
+#riskTable th.col-risk { width: 6.5rem; }
+#riskTable select { width: 100%; min-width: 0; }
 th, td { border:1px solid var(--grid); padding:6px; vertical-align:top; }
 th { background:#f1f5f9; }
 .table-actions { display:flex; gap:8px; margin-top:8px; }
@@ -587,7 +596,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="body">
         <h3 style="margin:0 0 8px">4) Task-specific Risk Assessment</h3>
         <table id="riskTable" aria-label="Risk register">
-          <thead><tr><th style="width:10rem">Step</th><th style="width:10rem">Hazard</th><th style="width:10rem">Consequence</th><th style="width:10rem">Existing Safeguards</th><th style="width:6rem">Likelihood</th><th style="width:6rem">Severity</th><th style="width:6.5rem">Risk</th><th style="width:12rem">Additional Controls</th><th style="width:6rem">Residual Risk</th></tr></thead>
+          <thead><tr><th class="col-text">Step</th><th class="col-text">Hazard</th><th class="col-text">Consequence</th><th class="col-text">Existing Safeguards</th><th class="col-lik">Likelihood</th><th class="col-sev">Severity</th><th class="col-risk">Risk</th><th class="col-text">Additional Controls</th><th class="col-residual">Residual Risk</th></tr></thead>
           <tbody></tbody>
         </table>
         <div class="table-actions">
@@ -707,21 +716,113 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Risk table helpers (updated to include residual dropdown)
   const riskTableBody = document.querySelector('#riskTable tbody');
-  function riskColour(l,c){ const map={ 'L|L':'green','L|M':'amber','L|H':'red','M|L':'amber','M|M':'amber','M|H':'red','H|L':'amber','H|M':'red','H|H':'red' }; return map[`${l}|${c}`]||'grey'; }
+  const RISK_MATRIX = {
+    1: {
+      1: { label: 'Very low', score: 1, level: 'green' },
+      2: { label: 'Very low', score: 2, level: 'green' },
+      3: { label: 'Low', score: 3, level: 'green' },
+      4: { label: 'Medium', score: 4, level: 'amber' },
+      5: { label: 'Medium', score: 5, level: 'amber' }
+    },
+    2: {
+      1: { label: 'Very low', score: 2, level: 'green' },
+      2: { label: 'Low', score: 4, level: 'green' },
+      3: { label: 'Medium', score: 6, level: 'amber' },
+      4: { label: 'Medium', score: 8, level: 'amber' },
+      5: { label: 'High', score: 10, level: 'orange' }
+    },
+    3: {
+      1: { label: 'Low', score: 3, level: 'green' },
+      2: { label: 'Medium', score: 6, level: 'amber' },
+      3: { label: 'Medium', score: 9, level: 'amber' },
+      4: { label: 'High', score: 12, level: 'orange' },
+      5: { label: 'Very high', score: 15, level: 'red' }
+    },
+    4: {
+      1: { label: 'Medium', score: 4, level: 'amber' },
+      2: { label: 'Medium', score: 8, level: 'amber' },
+      3: { label: 'High', score: 12, level: 'orange' },
+      4: { label: 'Very high', score: 16, level: 'red' },
+      5: { label: 'Extreme', score: 20, level: 'red' }
+    },
+    5: {
+      1: { label: 'Medium', score: 5, level: 'amber' },
+      2: { label: 'High', score: 10, level: 'orange' },
+      3: { label: 'Very high', score: 15, level: 'red' },
+      4: { label: 'Extreme', score: 20, level: 'red' },
+      5: { label: 'Extreme', score: 25, level: 'red' }
+    }
+  };
+  const residualOptions = [
+    { label: 'Very low', score: 1 },
+    { label: 'Very low', score: 2 },
+    { label: 'Low', score: 3 },
+    { label: 'Low', score: 4 },
+    { label: 'Medium', score: 4 },
+    { label: 'Medium', score: 5 },
+    { label: 'Medium', score: 6 },
+    { label: 'Medium', score: 8 },
+    { label: 'Medium', score: 9 },
+    { label: 'High', score: 10 },
+    { label: 'High', score: 12 },
+    { label: 'Very high', score: 15 },
+    { label: 'Very high', score: 16 },
+    { label: 'Extreme', score: 20 },
+    { label: 'Extreme', score: 25 }
+  ];
+  const likelihoodOptions = [
+    { value: 1, label: '1 Rare' },
+    { value: 2, label: '2 Unlikely' },
+    { value: 3, label: '3 Moderate' },
+    { value: 4, label: '4 Likely' },
+    { value: 5, label: '5 Almost Certain' }
+  ];
+  const severityOptions = [
+    { value: 1, label: '1 Insignificant' },
+    { value: 2, label: '2 Minor' },
+    { value: 3, label: '3 Significant' },
+    { value: 4, label: '4 Major' },
+    { value: 5, label: '5 Severe' }
+  ];
+  function buildOptions(options){
+    return options.map(({ value, label }) => `<option value="${value}">${label}</option>`).join('');
+  }
+  function buildResidualOptions(){
+    return residualOptions.map(({ label, score }) => `<option value="${label} ${score}">${label} ${score}</option>`).join('');
+  }
   function wireRow(tr){
-    const lik = tr.querySelector('.lik'); const con = tr.querySelector('.con'); const pill = tr.querySelector('.pill');
-    function update(){ const l=lik.value, c=con.value; if(!l||!c){ pill.style.display='none'; return;} const col=riskColour(l,c); pill.style.display='inline-block'; pill.textContent=(col==='green'?'LOW':col==='amber'?'MED':'HIGH'); pill.className=`pill ${col}`; }
-    lik.addEventListener('change', update); con.addEventListener('change', update);
+    const lik = tr.querySelector('.lik');
+    const con = tr.querySelector('.con');
+    const pill = tr.querySelector('.pill');
+    function update(){
+      const l = Number(lik.value);
+      const c = Number(con.value);
+      if(!l || !c){
+        pill.style.display='none';
+        return;
+      }
+      const entry = RISK_MATRIX[l]?.[c];
+      if(!entry){
+        pill.style.display='none';
+        return;
+      }
+      pill.style.display='inline-block';
+      pill.textContent = `${entry.label} ${entry.score}`;
+      pill.className = `pill ${entry.level}`;
+    }
+    lik.addEventListener('change', update);
+    con.addEventListener('change', update);
   }
   function addRiskRow(){
     const tr = document.createElement('tr');
     tr.innerHTML = '<td contenteditable></td><td contenteditable></td><td contenteditable></td><td contenteditable></td>'+
-                   '<td><select class="lik"><option value="">—</option><option>L</option><option>M</option><option>H</option></select></td>'+
-                   '<td><select class="con"><option value="">—</option><option>L</option><option>M</option><option>H</option></select></td>'+
+                   `<td><select class="lik"><option value="">—</option>${buildOptions(likelihoodOptions)}</select></td>`+
+                   `<td><select class="con"><option value="">—</option>${buildOptions(severityOptions)}</select></td>`+
                    '<td class="risk"><span class="pill" style="display:none"></span></td>'+
                    '<td contenteditable></td>'+
-                   '<td><select class="residual"><option value="">—</option><option value="L">LOW</option><option value="M">MED</option><option value="H">HIGH</option></select></td>';
-    riskTableBody.appendChild(tr); wireRow(tr);
+                   `<td><select class="residual"><option value="">—</option>${buildResidualOptions()}</select></td>`;
+    riskTableBody.appendChild(tr);
+    wireRow(tr);
   }
   function ensureAtLeastOneRow(){ if(riskTableBody.children.length===0) addRiskRow(); }
 
@@ -841,16 +942,19 @@ document.addEventListener("DOMContentLoaded", () => {
     addTitle('Risk Assessment');
     const riskRows = Array.from(riskTableBody.querySelectorAll('tr')).map(tr => {
       const cells = tr.querySelectorAll('td');
+      const likSelect = tr.querySelector('.lik');
+      const conSelect = tr.querySelector('.con');
+      const residualSelect = tr.querySelector('.residual');
       return [
         cells[0]?.innerText || '',
         cells[1]?.innerText || '',
         cells[2]?.innerText || '',
         cells[3]?.innerText || '',
-        tr.querySelector('.lik')?.value || '',
-        tr.querySelector('.con')?.value || '',
+        likSelect?.selectedOptions?.[0]?.textContent || '',
+        conSelect?.selectedOptions?.[0]?.textContent || '',
         tr.querySelector('.pill')?.textContent || '',
         cells[7]?.innerText || '',
-        tr.querySelector('.residual')?.value || ''
+        residualSelect?.selectedOptions?.[0]?.textContent || ''
       ];
     });
 

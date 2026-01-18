@@ -585,7 +585,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="body">
         <h3 style="margin:0 0 8px">4) Task-specific Risk Assessment</h3>
         <table id="riskTable" aria-label="Risk register">
-          <thead><tr><th style="width:7rem">Step</th><th>Hazard</th><th>Cause</th><th>Consequence</th><th>Existing Safeguards</th><th style="width:8.5rem">Likelihood</th><th style="width:8.5rem">Consequence</th><th style="width:6.5rem">Risk</th><th>Additional Controls</th><th style="width:7.5rem">Residual Risk</th></tr></thead>
+          <thead><tr><th style="width:7rem">Step</th><th style="width:16rem">Hazard</th><th>Consequence</th><th>Existing Safeguards</th><th style="width:6rem">Likelihood</th><th style="width:6rem">Severity</th><th style="width:6.5rem">Risk</th><th>Additional Controls</th><th style="width:7.5rem">Residual Risk</th></tr></thead>
           <tbody></tbody>
         </table>
         <div class="table-actions">
@@ -713,7 +713,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   function addRiskRow(){
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td contenteditable></td><td contenteditable></td><td contenteditable></td><td contenteditable></td><td contenteditable></td>'+
+    tr.innerHTML = '<td contenteditable></td><td contenteditable></td><td contenteditable></td><td contenteditable></td>'+
                    '<td><select class="lik"><option value="">—</option><option>L</option><option>M</option><option>H</option></select></td>'+
                    '<td><select class="con"><option value="">—</option><option>L</option><option>M</option><option>H</option></select></td>'+
                    '<td class="risk"><span class="pill" style="display:none"></span></td>'+
@@ -844,11 +844,10 @@ document.addEventListener("DOMContentLoaded", () => {
         cells[1]?.innerText || '',
         cells[2]?.innerText || '',
         cells[3]?.innerText || '',
-        cells[4]?.innerText || '',
         tr.querySelector('.lik')?.value || '',
         tr.querySelector('.con')?.value || '',
         tr.querySelector('.pill')?.textContent || '',
-        cells[8]?.innerText || '',
+        cells[7]?.innerText || '',
         tr.querySelector('.residual')?.value || ''
       ];
     });
@@ -859,8 +858,8 @@ document.addEventListener("DOMContentLoaded", () => {
       styles: { fontSize: 9, cellPadding: 1.5 },
       pageBreak: 'auto',
       margin: { left: margin, right: margin },
-      head: [['Step', 'Hazard', 'Cause', 'Consequence', 'Existing Safeguards', 'Likelihood', 'Consequence', 'Risk', 'Additional Controls', 'Residual Risk']],
-      body: riskRows.length ? riskRows : [['', '', '', '', '', '', '', '', '', '']]
+      head: [['Step', 'Hazard', 'Consequence', 'Existing Safeguards', 'Likelihood', 'Severity', 'Risk', 'Additional Controls', 'Residual Risk']],
+      body: riskRows.length ? riskRows : [['', '', '', '', '', '', '', '', '']]
     });
     cursorY = pdf.lastAutoTable.finalY + 6;
 

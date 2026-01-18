@@ -1028,7 +1028,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try{
       const rel=calcRelease(); const loc=selLoc.value||null; const out=calcOutcome(rel,loc); const base=calcIsolation(selSub.value,out);
       setBadge(tRelease,dRelease,rel,colourLMH(rel)); setBadge(tLocation,dLocation,loc,colourLMH(loc)); setBadge(tOutcome,dOutcome,out,'#e5e7eb'); setBadge(tBaseline,dBaseline,base,'#e5e7eb');
-      const requested=reqBaseline.value||''; const nonConformant=requested && base && (requested!==base);
+      const requested=reqBaseline.value||''; const nonConformant=(base === 'R') || (requested && base && (requested!==base));
       nonConfBanner.style.display=nonConformant?'block':'none'; raSection.hidden=!nonConformant;
       if(nonConformant){ wireRAButtons(); ensureAtLeastOneRow(); }
       validateMandatory();

@@ -59,8 +59,8 @@ h2 { margin:0; font-size:1rem; padding:10px 12px; background:var(--head-bg); col
 .three { grid-template-columns:repeat(3,minmax(220px,1fr)); }
 
 /* ---------- Panels ---------- */
-.panel { background:#fff; border:1px solid var(--grid); border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
-.panel .body { padding:12px; }
+.panel { background:#fff; border:1px solid var(--grid); border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.06); max-width:100%; }
+.panel .body { padding:12px; min-width:0; }
 
 /* ---------- Fields ---------- */
 .field { display:flex; flex-direction:column; gap:6px; }
@@ -117,15 +117,18 @@ button.secondary { border-color:#cbd5e1; background:#f8fafc; color:#0f172a; }
 /* ---------- Tables ---------- */
 table { width:100%; border-collapse:collapse; }
 #riskTable { table-layout: fixed; }
-#riskTable th.col-text { width: 12rem; }
+#riskTable th.col-text { width: 10rem; }
+#riskTable th.col-additional { width: 9rem; }
 #riskTable th.col-lik,
 #riskTable th.col-sev,
-#riskTable th.col-residual { width: 5.5rem; }
-#riskTable th.col-risk { width: 6.5rem; }
+#riskTable th.col-residual { width: 4.75rem; }
+#riskTable th.col-risk { width: 5rem; }
 #riskTable select { width: 100%; min-width: 0; }
 th, td { border:1px solid var(--grid); padding:6px; vertical-align:top; }
 th { background:#f1f5f9; }
 .table-actions { display:flex; gap:8px; margin-top:8px; }
+.table-scroll { overflow-x:auto; max-width:100%; width:100%; }
+.table-scroll table { min-width: 720px; }
 
 /* ---------- Legends ---------- */
 .legend-cols { display:grid; grid-template-columns:repeat(2,minmax(240px,1fr)); gap:14px; }
@@ -545,7 +548,11 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="row"><span class="label">Outcome Factor</span><span class="value"><span class="badge"><span class="dot" id="outcome-dot"></span><span id="outcome-text" class="muted">—</span></span></span></div>
         <div class="row"><span class="label">Baseline Isolation Standard</span><span class="value"><span class="badge"><span class="dot" id="baseline-dot"></span><span id="baseline-text" class="muted">—</span></span></span></div>
       </div>
-      <div class="body"><div id="nonConfBanner" class="banner">Baseline is non-conformant with the requested standard. Complete the Risk Assessment below. Export is disabled until mandatory fields are complete.</div></div>
+      <div class="body">
+        <div id="nonConfBanner" class="banner">
+          Baseline is non-conformant with the requested standard. Complete the Risk Assessment below. Export is disabled until mandatory fields are complete.
+        </div>
+      </div>
     </section>
 
     <!-- Legend (always visible; collapsible) -->
@@ -593,10 +600,10 @@ document.addEventListener("DOMContentLoaded", () => {
         </label><textarea id="monitor" required placeholder="e.g., Pressure gauge reading every hour by operator; continuous gas detector monitoring"></textarea></div>
       </div>
 
-      <div class="body">
+      <div class="body table-scroll">
         <h3 style="margin:0 0 8px">4) Task-specific Risk Assessment</h3>
         <table id="riskTable" aria-label="Risk register">
-          <thead><tr><th class="col-text">Step</th><th class="col-text">Hazard</th><th class="col-text">Consequence</th><th class="col-text">Existing Safeguards</th><th class="col-lik">Likelihood</th><th class="col-sev">Severity</th><th class="col-risk">Risk</th><th class="col-text">Additional Controls</th><th class="col-residual">Residual Risk</th></tr></thead>
+          <thead><tr><th class="col-text">Step</th><th class="col-text">Hazard</th><th class="col-text">Consequence</th><th class="col-text">Existing Safeguards</th><th class="col-lik">Likelihood</th><th class="col-sev">Severity</th><th class="col-risk">Risk</th><th class="col-additional">Additional Controls</th><th class="col-residual">Residual Risk</th></tr></thead>
           <tbody></tbody>
         </table>
         <div class="table-actions">
@@ -605,7 +612,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
       </div>
 
-      <div class="body">
+      <div class="body table-scroll">
         <h3 style="margin:0 0 8px">5) Temporary Controls Checklist</h3>
         <table id="chkTable"><thead><tr><th>Control Item</th><th style="width:10rem">Yes / No / N/A</th></tr></thead>
           <tbody>

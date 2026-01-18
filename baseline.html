@@ -770,52 +770,59 @@ document.addEventListener("DOMContentLoaded", () => {
       cursorY += 6;
     };
 
-    const addParagraph = (label, value) => {
-      pdf.setFontSize(11);
-      const lines = pdf.splitTextToSize(value || '—', contentWidth);
-      pdf.text(label, margin, cursorY);
-      cursorY += 5;
-      pdf.setFontSize(10);
-      pdf.text(lines, margin, cursorY);
-      cursorY += lines.length * 4 + 2;
+    const addLabelValueTable = (rows) => {
+      pdf.autoTable({
+        startY: cursorY,
+        theme: 'grid',
+        styles: { fontSize: 10, cellPadding: 2 },
+        columnStyles: {
+          0: { cellWidth: contentWidth * 0.32, fontStyle: 'bold' },
+          1: { cellWidth: contentWidth * 0.68 }
+        },
+        body: rows.map(([label, value]) => [label, value || '—'])
+      });
+      cursorY = pdf.lastAutoTable.finalY + 6;
+    };
+
+    const addParagraphTable = (label, value) => {
+      const textValue = value ? String(value) : '—';
+      addLabelValueTable([[label, textValue]]);
     };
 
     pdf.setFontSize(16);
     pdf.text('Non-Conformant Baseline Risk Assessment', pageWidth / 2, cursorY, { align: 'center' });
     cursorY += 8;
 
+    addTitle('Calculated Results');
+    addLabelValueTable([
+      ['Calculated Release Factor', document.getElementById('release-text')?.textContent || '—'],
+      ['Location Factor', document.getElementById('location-text')?.textContent || '—'],
+      ['Outcome Factor', document.getElementById('outcome-text')?.textContent || '—'],
+      ['Baseline Isolation Standard', document.getElementById('baseline-text')?.textContent || '—'],
+      ['Requested Isolation Standard', document.getElementById('requestedBaseline')?.selectedOptions?.[0]?.textContent || 'Same as calculated']
+    ]);
+
     addTitle('Context');
-    pdf.autoTable({
-      startY: cursorY,
-      theme: 'grid',
-      styles: { fontSize: 10, cellPadding: 2 },
-      columnStyles: { 0: { cellWidth: contentWidth * 0.18 }, 1: { cellWidth: contentWidth * 0.32 }, 2: { cellWidth: contentWidth * 0.18 }, 3: { cellWidth: contentWidth * 0.32 } },
-      body: [
-        ['Asset / Area', $('asset')?.value || '', 'Job / Task ID', $('job')?.value || ''],
-        ['Work Description', $('work')?.value || '', 'Date', $('date')?.value || ''],
-        ['Prepared by', $('prepared')?.value || '', '', '']
-      ]
-    });
-    cursorY = pdf.lastAutoTable.finalY + 6;
+    addLabelValueTable([
+      ['Asset / Area', $('asset')?.value || ''],
+      ['Job / Task ID', $('job')?.value || ''],
+      ['Work Description', $('work')?.value || ''],
+      ['Date', $('date')?.value || ''],
+      ['Prepared by', $('prepared')?.value || '']
+    ]);
 
     addTitle('Deviation Summary');
-    addParagraph('Summary', $('deviation')?.value || '');
+    addParagraphTable('Summary', $('deviation')?.value || '');
 
     addTitle('Proposed Alternative');
-    pdf.autoTable({
-      startY: cursorY,
-      theme: 'grid',
-      styles: { fontSize: 10, cellPadding: 2 },
-      columnStyles: { 0: { cellWidth: contentWidth * 0.2 }, 1: { cellWidth: contentWidth * 0.3 }, 2: { cellWidth: contentWidth * 0.2 }, 3: { cellWidth: contentWidth * 0.3 } },
-      body: [
-        ['Primary Isolation Method', $('primaryIso')?.value || '', 'Verification Method', $('verify')?.value || ''],
-        ['Secondary / Redundant Barriers', $('redundant')?.value || '', '', ''],
-        ['Vent / Bleed / Depressurisation Points', $('vents')?.value || '', '', ''],
-        ['LOTO Controls', $('loto')?.value || '', '', ''],
-        ['Monitoring & Hold Points', $('monitor')?.value || '', '', '']
-      ]
-    });
-    cursorY = pdf.lastAutoTable.finalY + 6;
+    addLabelValueTable([
+      ['Primary Isolation Method', $('primaryIso')?.value || ''],
+      ['Verification Method', $('verify')?.value || ''],
+      ['Secondary / Redundant Barriers', $('redundant')?.value || ''],
+      ['Vent / Bleed / Depressurisation Points', $('vents')?.value || ''],
+      ['LOTO Controls', $('loto')?.value || ''],
+      ['Monitoring & Hold Points', $('monitor')?.value || '']
+    ]);
 
     addTitle('Risk Assessment');
     const riskRows = Array.from(riskTableBody.querySelectorAll('tr')).map(tr => {
@@ -858,33 +865,22 @@ document.addEventListener("DOMContentLoaded", () => {
     cursorY = pdf.lastAutoTable.finalY + 6;
 
     addTitle('ALARP Justification & Timebound Use');
-    addParagraph('Justification', $('alarp')?.value || '');
+    addParagraphTable('Justification', $('alarp')?.value || '');
 
     addTitle('Validation & Monitoring');
-    pdf.autoTable({
-      startY: cursorY,
-      theme: 'grid',
-      styles: { fontSize: 10, cellPadding: 2 },
-      body: [
-        ['Pre-work Verification', $('prework')?.value || ''],
-        ['During Work Monitoring', $('during')?.value || ''],
-        ['De-isolation / Re-commissioning checks', $('deiso')?.value || ''],
-        ['Documentation in work pack', $('docs')?.value || '']
-      ]
-    });
-    cursorY = pdf.lastAutoTable.finalY + 6;
+    addLabelValueTable([
+      ['Pre-work Verification', $('prework')?.value || ''],
+      ['During Work Monitoring', $('during')?.value || ''],
+      ['De-isolation / Re-commissioning checks', $('deiso')?.value || ''],
+      ['Documentation in work pack', $('docs')?.value || '']
+    ]);
 
     addTitle('Approvals');
-    pdf.autoTable({
-      startY: cursorY,
-      theme: 'grid',
-      styles: { fontSize: 10, cellPadding: 2 },
-      body: [
-        ['Isolation Authority', $('psAuth')?.value || '', 'HSSE Approval', $('hsse')?.value || ''],
-        ['Operations Manager', $('contractor')?.value || '', '', '']
-      ]
-    });
-    cursorY = pdf.lastAutoTable.finalY + 6;
+    addLabelValueTable([
+      ['Isolation Authority', $('psAuth')?.value || ''],
+      ['HSSE Approval', $('hsse')?.value || ''],
+      ['Operations Manager', $('contractor')?.value || '']
+    ]);
 
     pdf.setFontSize(9);
     const footerLines = pdf.splitTextToSize(

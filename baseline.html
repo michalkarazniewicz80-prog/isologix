@@ -706,7 +706,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const RELEASE_TABLE={'>50 barg':{'>8 in':'H','2–8 in':'H','<2 in':'M'},'10–50 barg':{'>8 in':'H','2–8 in':'M','<2 in':'L'},'<10 barg':{'>8 in':'M','2–8 in':'L','<2 in':'L'}}; 
   const OUTCOME_TABLE={'H|H':'A','H|M':'A','H|L':'B','M|H':'A','M|M':'B','M|L':'C','L|H':'B','L|M':'C','L|L':'C'};
-  const ISOLATION_TABLE={1:{'A':'I','B':'I','C':'II'},2:{'A':'I','B':'II','C':'II'},3:{'A':'I','B':'II','C':'III'},4:{'A':'II','B':'II','C':'III'},5:{'A':'II','B':'III','C':'III'}};
+  const ISOLATION_TABLE={1:{'A':'R','B':'I','C':'II'},2:{'A':'R','B':'II','C':'II'},3:{'A':'I','B':'II','C':'III'},4:{'A':'II','B':'II','C':'III'},5:{'A':'II','B':'III','C':'III'}};
 
   function colourLMH(v){return v==='L'?GREEN:v==='M'?AMBER:v==='H'?RED:'#e5e7eb'}
   function setBadge(textEl, dotEl, value, colour){ textEl.textContent = value || '—'; textEl.classList.toggle('muted', !value); dotEl.style.background = colour || '#e5e7eb'; }
@@ -1028,7 +1028,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try{
       const rel=calcRelease(); const loc=selLoc.value||null; const out=calcOutcome(rel,loc); const base=calcIsolation(selSub.value,out);
       setBadge(tRelease,dRelease,rel,colourLMH(rel)); setBadge(tLocation,dLocation,loc,colourLMH(loc)); setBadge(tOutcome,dOutcome,out,'#e5e7eb'); setBadge(tBaseline,dBaseline,base,'#e5e7eb');
-      const requested=reqBaseline.value||''; const nonConformant=requested && base && (requested!==base);
+      const requested=reqBaseline.value||''; const nonConformant=(base === 'R') || (requested && base && (requested!==base));
       nonConfBanner.style.display=nonConformant?'block':'none'; raSection.hidden=!nonConformant;
       if(nonConformant){ wireRAButtons(); ensureAtLeastOneRow(); }
       validateMandatory();

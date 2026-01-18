@@ -4,6 +4,8 @@
 <meta charset="utf-8" />
 <title>Baseline Isolation Selection Tool — Updated (Print/PDF)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.5.29/dist/jspdf.plugin.autotable.js"></script>
 <style>
 :root{
   --green:#22C55E;
@@ -743,57 +745,157 @@ document.addEventListener("DOMContentLoaded", () => {
     return ok;
   }
 
-  // Export / print — open printable HTML and call print (includes residual select values)
-  function buildExportHtml(){
-    const risksHtml = Array.from(riskTableBody.querySelectorAll('tr')).map(tr=>{
-      const cells=tr.querySelectorAll('td');
-      const L=tr.querySelector('.lik')?.value||'';
-      const C=tr.querySelector('.con')?.value||'';
-      const risk=tr.querySelector('.pill')?.textContent||'';
-      const residual = tr.querySelector('.residual')?.value || '';
-      return `<tr><td>${cells[0].innerText||''}</td><td>${cells[1].innerText||''}</td><td>${cells[2].innerText||''}</td><td>${cells[3].innerText||''}</td><td>${cells[4].innerText||''}</td><td>${L}</td><td>${C}</td><td>${risk}</td><td>${cells[8].innerText||''}</td><td>${residual}</td></tr>`;
-    }).join('');
-    const chkRows = Array.from(document.querySelectorAll('#chkTable tbody tr')).map(tr=>`<tr><td>${tr.children[0].innerText}</td><td>${tr.querySelector('select').value}</td></tr>`).join('');
+  // Export PDF — mirror planner behavior (jsPDF download)
+  document.getElementById('exportDoc').addEventListener('click', () => {
+    if (!validateMandatory()) {
+      alert('Please complete mandatory fields.');
+      return;
+    }
 
-    const html = `<!DOCTYPE html><html><head><meta charset='utf-8'><title>Non-Conformant Baseline Risk Assessment</title><style>body{font-family:Arial,Helvetica,sans-serif;padding:18px;color:#111}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f3f4f6}</style></head><body>`+
-      `<h2>Non-Conformant Baseline Risk Assessment</h2>`+
-      `<h3>Context</h3><table><tr><td><b>Asset / Area</b></td><td>${$('asset')?.value||''}</td><td><b>Job / Task ID</b></td><td>${$('job')?.value||''}</td></tr>`+
-      `<tr><td><b>Work Description</b></td><td colspan='3'>${$('work')?.value||''}</td></tr>`+
-      `<tr><td><b>Date</b></td><td>${$('date')?.value||''}</td><td><b>Prepared by</b></td><td>${$('prepared')?.value||''}</td></tr></table>`+
-      `<h3>Deviation Summary</h3><p>${$('deviation')?.value||''}</p>`+
-      `<h3>Proposed Alternative</h3><table>`+
-      `<tr><td><b>Primary Isolation Method</b></td><td>${$('primaryIso')?.value||''}</td><td><b>Verification Method</b></td><td>${$('verify')?.value||''}</td></tr>`+
-      `<tr><td><b>Secondary / Redundant Barriers</b></td><td colspan='3'>${$('redundant')?.value||''}</td></tr>`+
-      `<tr><td><b>Vent / Bleed / Depressurisation Points</b></td><td colspan='3'>${$('vents')?.value||''}</td></tr>`+
-      `<tr><td><b>LOTO Controls</b></td><td colspan='3'>${$('loto')?.value||''}</td></tr>`+
-      `<tr><td><b>Monitoring & Hold Points</b></td><td colspan='3'>${$('monitor')?.value||''}</td></tr></table>`+
-      `<h3>Risk Assessment</h3><table><tr><th>Step</th><th>Hazard</th><th>Cause</th><th>Consequence</th><th>Existing Safeguards</th><th>Likelihood</th><th>Consequence</th><th>Risk</th><th>Additional Controls</th><th>Residual Risk</th></tr>${risksHtml}</table>`+
-      `<h3>Temporary Controls Checklist</h3><table><tr><th>Control Item</th><th>Yes/No/N/A</th></tr>${chkRows}</table>`+
-      `<h3>ALARP Justification & Timebound Use</h3><p>${$('alarp')?.value||''}</p>`+
-      `<h3>Validation & Monitoring</h3><table>`+
-      `<tr><td><b>Pre-work Verification</b></td><td>${$('prework')?.value||''}</td></tr>`+
-      `<tr><td><b>During Work Monitoring</b></td><td>${$('during')?.value||''}</td></tr>`+
-      `<tr><td><b>De-isolation / Re-commissioning checks</b></td><td>${$('deiso')?.value||''}</td></tr>`+
-      `<tr><td><b>Documentation in work pack</b></td><td>${$('docs')?.value||''}</td></tr></table>`+
-      `<h3>Approvals</h3><table><tr><td><b>Isolation Authority</b></td><td>${$('psAuth')?.value||''}</td><td><b>HSSE Approval</b></td><td>${$('hsse')?.value||''}</td></tr><tr><td><b>Operations Manager</b></td><td>${$('contractor')?.value||''}</td></tr></table>`+
-      `<p><i>Note: This form is for temporary deviation from the baseline isolation determined by the tool and must be authorised.</i></p>`+
-      `<footer style="margin-top:20px;padding:14px;border-top:1px solid #ccc;text-align:center;font-size:0.9rem;color:#555;">`+
-      `This tool assists decision-making and risk evaluation in line with HSG253 and API best practices.<br>`+
-      `It does not replace the judgment or authority of a competent person.<br>`+
-      `© 2025 IsoLogix – All Rights Reserved.<br>`+
-      `v1.3 – October 2025</footer>`+
-      `</body></html>`;
-    return html;
-  }
+    const jsPdfCtor = window.jspdf?.jsPDF;
+    if (!jsPdfCtor) {
+      alert('jsPDF not loaded');
+      return;
+    }
 
-  document.getElementById('exportDoc').addEventListener('click', ()=>{
-    if(!validateMandatory()){ alert('Please complete mandatory fields.'); return; }
-    const html = buildExportHtml();
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    // Give the browser a moment to render then trigger print
-    setTimeout(()=>{ w.focus(); w.print(); }, 250);
+    const pdf = new jsPdfCtor({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const margin = 12;
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const contentWidth = pageWidth - margin * 2;
+    let cursorY = margin;
+
+    const addTitle = (text) => {
+      pdf.setFontSize(14);
+      pdf.text(text, margin, cursorY);
+      cursorY += 6;
+    };
+
+    const addParagraph = (label, value) => {
+      pdf.setFontSize(11);
+      const lines = pdf.splitTextToSize(value || '—', contentWidth);
+      pdf.text(label, margin, cursorY);
+      cursorY += 5;
+      pdf.setFontSize(10);
+      pdf.text(lines, margin, cursorY);
+      cursorY += lines.length * 4 + 2;
+    };
+
+    pdf.setFontSize(16);
+    pdf.text('Non-Conformant Baseline Risk Assessment', pageWidth / 2, cursorY, { align: 'center' });
+    cursorY += 8;
+
+    addTitle('Context');
+    pdf.autoTable({
+      startY: cursorY,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: contentWidth * 0.18 }, 1: { cellWidth: contentWidth * 0.32 }, 2: { cellWidth: contentWidth * 0.18 }, 3: { cellWidth: contentWidth * 0.32 } },
+      body: [
+        ['Asset / Area', $('asset')?.value || '', 'Job / Task ID', $('job')?.value || ''],
+        ['Work Description', $('work')?.value || '', 'Date', $('date')?.value || ''],
+        ['Prepared by', $('prepared')?.value || '', '', '']
+      ]
+    });
+    cursorY = pdf.lastAutoTable.finalY + 6;
+
+    addTitle('Deviation Summary');
+    addParagraph('Summary', $('deviation')?.value || '');
+
+    addTitle('Proposed Alternative');
+    pdf.autoTable({
+      startY: cursorY,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: contentWidth * 0.2 }, 1: { cellWidth: contentWidth * 0.3 }, 2: { cellWidth: contentWidth * 0.2 }, 3: { cellWidth: contentWidth * 0.3 } },
+      body: [
+        ['Primary Isolation Method', $('primaryIso')?.value || '', 'Verification Method', $('verify')?.value || ''],
+        ['Secondary / Redundant Barriers', $('redundant')?.value || '', '', ''],
+        ['Vent / Bleed / Depressurisation Points', $('vents')?.value || '', '', ''],
+        ['LOTO Controls', $('loto')?.value || '', '', ''],
+        ['Monitoring & Hold Points', $('monitor')?.value || '', '', '']
+      ]
+    });
+    cursorY = pdf.lastAutoTable.finalY + 6;
+
+    addTitle('Risk Assessment');
+    const riskRows = Array.from(riskTableBody.querySelectorAll('tr')).map(tr => {
+      const cells = tr.querySelectorAll('td');
+      return [
+        cells[0]?.innerText || '',
+        cells[1]?.innerText || '',
+        cells[2]?.innerText || '',
+        cells[3]?.innerText || '',
+        cells[4]?.innerText || '',
+        tr.querySelector('.lik')?.value || '',
+        tr.querySelector('.con')?.value || '',
+        tr.querySelector('.pill')?.textContent || '',
+        cells[8]?.innerText || '',
+        tr.querySelector('.residual')?.value || ''
+      ];
+    });
+
+    pdf.autoTable({
+      startY: cursorY,
+      theme: 'grid',
+      styles: { fontSize: 9, cellPadding: 1.5 },
+      head: [['Step', 'Hazard', 'Cause', 'Consequence', 'Existing Safeguards', 'Likelihood', 'Consequence', 'Risk', 'Additional Controls', 'Residual Risk']],
+      body: riskRows.length ? riskRows : [['', '', '', '', '', '', '', '', '', '']]
+    });
+    cursorY = pdf.lastAutoTable.finalY + 6;
+
+    addTitle('Temporary Controls Checklist');
+    const checklistRows = Array.from(document.querySelectorAll('#chkTable tbody tr')).map(tr => [
+      tr.children[0]?.innerText || '',
+      tr.querySelector('select')?.value || ''
+    ]);
+    pdf.autoTable({
+      startY: cursorY,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 2 },
+      head: [['Control Item', 'Yes / No / N/A']],
+      body: checklistRows
+    });
+    cursorY = pdf.lastAutoTable.finalY + 6;
+
+    addTitle('ALARP Justification & Timebound Use');
+    addParagraph('Justification', $('alarp')?.value || '');
+
+    addTitle('Validation & Monitoring');
+    pdf.autoTable({
+      startY: cursorY,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 2 },
+      body: [
+        ['Pre-work Verification', $('prework')?.value || ''],
+        ['During Work Monitoring', $('during')?.value || ''],
+        ['De-isolation / Re-commissioning checks', $('deiso')?.value || ''],
+        ['Documentation in work pack', $('docs')?.value || '']
+      ]
+    });
+    cursorY = pdf.lastAutoTable.finalY + 6;
+
+    addTitle('Approvals');
+    pdf.autoTable({
+      startY: cursorY,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 2 },
+      body: [
+        ['Isolation Authority', $('psAuth')?.value || '', 'HSSE Approval', $('hsse')?.value || ''],
+        ['Operations Manager', $('contractor')?.value || '', '', '']
+      ]
+    });
+    cursorY = pdf.lastAutoTable.finalY + 6;
+
+    pdf.setFontSize(9);
+    const footerLines = pdf.splitTextToSize(
+      'This form is for temporary deviation from the baseline isolation determined by the tool and must be authorised.',
+      contentWidth
+    );
+    pdf.text(footerLines, margin, cursorY);
+    cursorY += footerLines.length * 4 + 4;
+    pdf.text('© 2025 IsoLogix – All Rights Reserved. v1.3 – October 2025', margin, cursorY);
+
+    pdf.save('Baseline_Risk_Assessment.pdf');
   });
 
 

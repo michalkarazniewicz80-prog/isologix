@@ -338,13 +338,13 @@ function getNextPinID(){
 }
 
 /* Click-to-add-pin logic (shared by manual + tag extraction) */
-async function addIsolationPinAt(x, y, descriptionText = ''){
+async function addPinAt(toolType, x, y, descriptionText = ''){
   let finalDescription = descriptionText;
   if(!finalDescription){
     const nearestTag = await getNearestTagForPoint({ x, y });
     if(nearestTag) finalDescription = nearestTag.text;
   }
-  const color = 'rgba(255,0,0,0.7)';
+  const color = toolType==='point' ? 'rgba(255,0,0,0.7)' : toolType==='vent' ? 'rgba(0,200,0,0.7)' : 'rgba(0,0,255,0.7)';
   const id = getNextPinID();
   const c = new Konva.Circle({ x, y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
   c.setAttr('id', id);
@@ -354,8 +354,8 @@ async function addIsolationPinAt(x, y, descriptionText = ''){
   c.setAttr('annoId', annoId);
   t.setAttr('annoId', annoId);
   mainLayer.add(c); mainLayer.add(t);
-  annotations.push({ annoId, id, type:'point', shapeType:'circle', attrs: { id, x: c.x(), y: c.y(), radius: BASE_PIN_RADIUS, fill: color, stroke:'#111', strokeWidth:1 } });
-  const row = addPointRow(id, 'point', c);
+  annotations.push({ annoId, id, type:toolType, shapeType:'circle', attrs: { id, x: c.x(), y: c.y(), radius: BASE_PIN_RADIUS, fill: color, stroke:'#111', strokeWidth:1 } });
+  const row = addPointRow(id, toolType, c);
   if(finalDescription && row){
     const descInput = row.querySelector('.p-desc');
     if(descInput){ descInput.value = finalDescription; updateDeisoTable(); }
@@ -428,24 +428,7 @@ stage.on('click', async ()=>{
   if(activeSymbol){ insertSymbol(activeSymbol,pos.x,pos.y); activeSymbol=''; document.getElementById('symbolSelect').value=''; return; }
   if(tool==='text' && !textActive){ addTextAnnotation(pos.x,pos.y); textActive=true; return; }
   if(tool==='point' || tool==='vent' || tool==='spade'){
-    if(tool === 'point'){
-      await addIsolationPinAt(pos.x, pos.y);
-      return;
-    }
-    const color = tool==='vent' ? 'rgba(0,200,0,0.7)' : 'rgba(0,0,255,0.7)';
-    const id = getNextPinID();
-    const c = new Konva.Circle({ x:pos.x, y:pos.y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
-    c.setAttr('id', id);
-    const t = new Konva.Text({ x:pos.x+8, y:pos.y-12, text:String(id), fontSize:12, fill:'#111', listening:false });
-    c.on('dragmove', ()=> t.position({ x: c.x()+8, y: c.y()-12 }) );
-    // annotate with stable id
-    const annoId = genAnnoId();
-    c.setAttr('annoId', annoId);
-    t.setAttr('annoId', annoId);
-    mainLayer.add(c); mainLayer.add(t);
-    annotations.push({ annoId, id, type:tool, shapeType:'circle', attrs: { id, x: c.x(), y: c.y(), radius: BASE_PIN_RADIUS, fill: color, stroke:'#111', strokeWidth:1 } });
-    addPointRow(id, tool, c);
-    mainLayer.batchDraw();
+    await addPinAt(tool, pos.x, pos.y);
     return;
   }
   if(tool==='line' || tool==='boundary'){

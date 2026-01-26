@@ -588,6 +588,13 @@ const TAG_RULES = [
 const GENERIC_TAG_REGEX = /\b(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9-]{4,}\b/gi;
 const TAG_MATCH_DISTANCE = 80;
 
+function normalizeInputText(text){
+  return String(text || '')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /* Normalize tag case and separators for consistent output */
 function normalizeTag(text){
   return String(text || '')
@@ -682,8 +689,10 @@ async function extractTagsFromPdfText(arrayBuffer){
   const hasText = items.length > 0;
   if(!hasText) return { tags: [], hasText: false };
 
+  const lineGroups = new Map();
   items.forEach(item => {
-    const matches = findTagMatches(item.str);
+    const normalizedText = normalizeInputText(item.str);
+    const matches = findTagMatches(normalizedText);
     if(matches.length === 0) return;
     const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
     const x = tx[4];
@@ -699,6 +708,32 @@ async function extractTagsFromPdfText(arrayBuffer){
         source: 'pdfText'
       });
     });
+
+    const yKey = Math.round(y / 4) * 4;
+    const group = lineGroups.get(yKey) || { items: [], minX: x, maxX: x + width, minY: y, maxY: y + height };
+    group.items.push({ text: normalizedText, x, y, width, height });
+    group.minX = Math.min(group.minX, x);
+    group.maxX = Math.max(group.maxX, x + width);
+    group.minY = Math.min(group.minY, y);
+    group.maxY = Math.max(group.maxY, y + height);
+    lineGroups.set(yKey, group);
+  });
+
+  lineGroups.forEach(group => {
+    const sorted = group.items.sort((a, b) => a.x - b.x);
+    const lineText = normalizeInputText(sorted.map(i => i.text).join(' '));
+    const matches = findTagMatches(lineText);
+    if(matches.length === 0) return;
+    const bbox = { x: group.minX, y: group.minY, width: group.maxX - group.minX, height: group.maxY - group.minY };
+    matches.forEach(match => {
+      addDetectedTag({
+        text: match.text,
+        type: match.type,
+        confidence: 0.95,
+        bbox,
+        source: 'pdfText'
+      });
+    });
   });
 
   return { tags: detectedTags, hasText: true };
@@ -708,7 +743,7 @@ async function extractTagsWithOcr(imageDataUrl){
   if(!window.Tesseract) throw new Error('Tesseract.js not available');
   const result = await Tesseract.recognize(imageDataUrl, 'eng', { logger: () => {} });
   (result.data.words || []).forEach(word => {
-    const value = (word.text || '').trim();
+    const value = normalizeInputText(word.text || '');
     if(!value) return;
     const matches = findTagMatches(value);
     if(matches.length === 0) return;

@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.5.29/dist/jspdf.plugin.autotable.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.8.162/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
 
 <script>
 /* ========= AUTH INITIALISATION VIA NETLIFY FUNCTION ========= */
@@ -138,7 +139,8 @@ header { position:sticky; top:0; background:white; border-bottom:3px solid var(-
 button, select, .file-btn { background: var(--light); border:1px solid var(--accent); padding:6px 10px; border-radius:6px; font-weight:700; color:#053a66; cursor:pointer; font-size:13px; }
 button[disabled]{opacity:0.5;cursor:not-allowed;}
 #symbolSelect{width:160px;}
-#container{width:100%;height:700px;border:1px solid #aaa;background:#fff;cursor:crosshair;}
+.planner-layout{display:flex;gap:12px;align-items:flex-start;padding:0 10px;}
+#container{flex:1;height:700px;border:1px solid #aaa;background:#fff;cursor:crosshair;}
 table{border-collapse:collapse;width:98%;margin:10px auto;font-size:14px;table-layout:fixed;}
 th,td{border:2px solid #aaa;padding:10px;text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
 th{background:var(--light);color:var(--navy);font-weight:700;}
@@ -163,6 +165,15 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
 .draft-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #ddd; gap:8px; }
 .draft-row button { padding:6px 8px; font-size:12px; }
 .small { font-size:12px; color:#666; }
+.tags-panel{width:260px;border:1px solid #cbd5e1;border-radius:10px;padding:10px;background:#f8fafc;display:flex;flex-direction:column;gap:8px;}
+.tags-panel h4{margin:0;font-size:14px;color:#0b4a8b;}
+.tags-panel input[type="text"]{width:100%;}
+.tags-panel__list{max-height:620px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;background:#fff;}
+.tags-panel__item{display:flex;justify-content:space-between;gap:8px;padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:12px;cursor:pointer;}
+.tags-panel__item:last-child{border-bottom:none;}
+.tags-panel__item:hover{background:#e6f2ff;}
+.tags-panel__meta{color:#64748b;font-size:11px;}
+.tags-panel__status{font-size:12px;color:#64748b;}
 </style>
 </head>
 <body>
@@ -218,7 +229,16 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
   </div>
 </header>
 
-<div id="container"></div>
+<div class="planner-layout">
+  <div id="container"></div>
+  <aside class="tags-panel" aria-label="Tags">
+    <h4>Tags</h4>
+    <button id="extractTagsBtn" type="button">Extract Tags</button>
+    <input id="tagsSearch" type="text" placeholder="Search tags...">
+    <div class="tags-panel__status" id="tagsStatus">No tags extracted.</div>
+    <div class="tags-panel__list" id="tagsList" role="list"></div>
+  </aside>
+</div>
 
 <h3>Isolation Points</h3>
 <table id="pointsTable">
@@ -252,10 +272,22 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.8.162/pdf.worker.min.js';
 const { jsPDF } = window.jspdf;
 
-const stage = new Konva.Stage({ container:'container', width:window.innerWidth-24, height:700 });
-const mainLayer = new Konva.Layer(); stage.add(mainLayer);
+const containerEl = document.getElementById('container');
+const stage = new Konva.Stage({ container:'container', width:containerEl.clientWidth, height:700 });
+const pidLayer = new Konva.Layer();
+const tagsLayer = new Konva.Layer();
+const mainLayer = new Konva.Layer();
+stage.add(pidLayer);
+stage.add(tagsLayer);
+stage.add(mainLayer);
 
+const PDF_RENDER_SCALE = 2;
 let tool='', activeSymbol='', annotations=[], drawing=false, currentLine=null, currentPts=[], shiftPressed=false, textActive=false, pidImage=null;
+let pidImageMeta = null;
+let currentPidFile = null;
+let currentPidPdfData = null;
+let pidImageDataUrl = null;
+let detectedTags = [];
 const SYMBOLS = { valve: 'symbols/valve.png', flange: 'symbols/flange.png', hose_connection: 'symbols/hose_connection.png' };
 const BASE_PIN_RADIUS = 6, SYMBOL_SCALE = 0.42;
 let loadingImages = 0;
@@ -323,6 +355,34 @@ function updateDeisoTable(){
 
 function escapeHtml(s){ return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
 
+function getNextPinID(){
+  const rows = document.querySelectorAll('#pointsTable tbody tr');
+  if(rows.length===0) return 1;
+  const ids = Array.from(rows).map(r => parseInt(r.children[0].innerText) || 0);
+  return Math.max(...ids)+1;
+}
+
+/* Click-to-add-pin logic (shared by manual + tag extraction) */
+function addIsolationPinAt(x, y, descriptionText = ''){
+  const color = 'rgba(255,0,0,0.7)';
+  const id = getNextPinID();
+  const c = new Konva.Circle({ x, y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
+  c.setAttr('id', id);
+  const t = new Konva.Text({ x:x+8, y:y-12, text:String(id), fontSize:12, fill:'#111', listening:false });
+  c.on('dragmove', ()=> t.position({ x: c.x()+8, y: c.y()-12 }) );
+  const annoId = genAnnoId();
+  c.setAttr('annoId', annoId);
+  t.setAttr('annoId', annoId);
+  mainLayer.add(c); mainLayer.add(t);
+  annotations.push({ annoId, id, type:'point', shapeType:'circle', attrs: { id, x: c.x(), y: c.y(), radius: BASE_PIN_RADIUS, fill: color, stroke:'#111', strokeWidth:1 } });
+  const row = addPointRow(id, 'point', c);
+  if(descriptionText && row){
+    const descInput = row.querySelector('.p-desc');
+    if(descInput){ descInput.value = descriptionText; updateDeisoTable(); }
+  }
+  mainLayer.batchDraw();
+}
+
 /* ---------------------------
   Tool selection & stage events
    --------------------------- */
@@ -362,7 +422,7 @@ stage.on('wheel', e=>{
   stage.scale({ x:newScale, y:newScale });
   const newPos = { x: pointer.x - mousePointTo.x * newScale, y: pointer.y - mousePointTo.y * newScale };
   stage.position(newPos);
-  mainLayer.batchDraw();
+  stage.batchDraw();
 });
 
 let isPanning=false, lastPanPos={x:0,y:0};
@@ -380,21 +440,19 @@ stage.on('mousemove touchmove', e=>{
   const dx = pos.x - lastPanPos.x, dy = pos.y - lastPanPos.y;
   stage.x(stage.x()+dx); stage.y(stage.y()+dy);
   lastPanPos = pos;
-  mainLayer.batchDraw();
+  stage.batchDraw();
 });
 
 stage.on('click', ()=>{
   const pos = getPointer();
-  function getNextPinID(){
-    const rows = document.querySelectorAll('#pointsTable tbody tr');
-    if(rows.length===0) return 1;
-    const ids = Array.from(rows).map(r => parseInt(r.children[0].innerText) || 0);
-    return Math.max(...ids)+1;
-  }
   if(activeSymbol){ insertSymbol(activeSymbol,pos.x,pos.y); activeSymbol=''; document.getElementById('symbolSelect').value=''; return; }
   if(tool==='text' && !textActive){ addTextAnnotation(pos.x,pos.y); textActive=true; return; }
   if(tool==='point' || tool==='vent' || tool==='spade'){
-    const color = tool==='point' ? 'rgba(255,0,0,0.7)' : tool==='vent' ? 'rgba(0,200,0,0.7)' : 'rgba(0,0,255,0.7)';
+    if(tool === 'point'){
+      addIsolationPinAt(pos.x, pos.y);
+      return;
+    }
+    const color = tool==='vent' ? 'rgba(0,200,0,0.7)' : 'rgba(0,0,255,0.7)';
     const id = getNextPinID();
     const c = new Konva.Circle({ x:pos.x, y:pos.y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
     c.setAttr('id', id);
@@ -492,6 +550,7 @@ function addPointRow(id,type,circle){
   isoSelect.addEventListener('change', updateDeisoTable);
   tbody.appendChild(tr);
   updateDeisoTable();
+  return tr;
 }
 
 /* Pulse helpers */
@@ -551,22 +610,270 @@ function insertSymbol(name,x,y){
   img.src = path;
 }
 
+/* ---------------------------
+  Tag extraction helpers
+   --------------------------- */
+const TAG_EXCLUDE = new Set(['NOTE','NOTES','TYP','TYPICAL','SPEC','SPECS','NORMALLY','NORMAL','SCALE','DETAIL','REV','REFERENCE','GENERAL']);
+/* Tag classification using regex rules */
+const TAG_RULES = [
+  { type: 'Valve', regex: /\b(?:XV|HV|PV|LV|SV|SDV|ESDV|MOV|AOV)[ -]?\d+[A-Z]?\b/gi },
+  { type: 'Equipment', regex: /\b(?:P|C|E|V|TK|D|HX)[ -]?\d+[A-Z]?\b/gi },
+  { type: 'PSV', regex: /\bPSV[ -]?\d+[A-Z]?\b/gi },
+  { type: 'Line', regex: /\b\d{2,4}-[A-Z]{1,4}-\d{2,4}(?:-\d{1,2})?\b/gi }
+];
+const GENERIC_TAG_REGEX = /\b(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9-]{4,}\b/gi;
+
+function isExcludedTag(text){
+  const cleaned = text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  return TAG_EXCLUDE.has(cleaned);
+}
+
+function findTagMatches(text){
+  const matches = [];
+  if(!text) return matches;
+  const seen = new Set();
+  TAG_RULES.forEach(rule => {
+    const re = new RegExp(rule.regex.source, 'gi');
+    for(const match of text.matchAll(re)){
+      const value = match[0].trim();
+      if(!value || isExcludedTag(value)) continue;
+      const key = value.toUpperCase();
+      if(!seen.has(key)){
+        seen.add(key);
+        matches.push({ text: value, type: rule.type });
+      }
+    }
+  });
+  if(matches.length === 0){
+    for(const match of text.matchAll(GENERIC_TAG_REGEX)){
+      const value = match[0].trim();
+      if(!value || isExcludedTag(value)) continue;
+      const key = value.toUpperCase();
+      if(!seen.has(key)){
+        seen.add(key);
+        matches.push({ text: value, type: 'Generic' });
+      }
+    }
+  }
+  return matches;
+}
+
+/* Coordinate transforms: map image-space bbox -> Konva stage-space */
+function imageToStagePoint(x, y){
+  if(!pidImage || !pidImageMeta) return { x, y };
+  const scaleX = pidImage.width() / pidImageMeta.width;
+  const scaleY = pidImage.height() / pidImageMeta.height;
+  return { x: pidImage.x() + x * scaleX, y: pidImage.y() + y * scaleY };
+}
+
+function imageToStageRect(bbox){
+  const topLeft = imageToStagePoint(bbox.x, bbox.y);
+  const bottomRight = imageToStagePoint(bbox.x + bbox.width, bbox.y + bbox.height);
+  return {
+    x: topLeft.x,
+    y: topLeft.y,
+    width: bottomRight.x - topLeft.x,
+    height: bottomRight.y - topLeft.y
+  };
+}
+
+function clearDetectedTags(){
+  detectedTags = [];
+  tagsLayer.destroyChildren();
+  tagsLayer.batchDraw();
+  updateTagsList();
+}
+
+function updateTagsList(){
+  const list = document.getElementById('tagsList');
+  const status = document.getElementById('tagsStatus');
+  const query = (document.getElementById('tagsSearch').value || '').trim().toLowerCase();
+  list.innerHTML = '';
+  const filtered = detectedTags.filter(tag => !query || tag.text.toLowerCase().includes(query));
+  if(status){
+    status.textContent = filtered.length ? `${filtered.length} tag(s) found.` : 'No tags extracted.';
+  }
+  filtered.forEach(tag => {
+    const item = document.createElement('div');
+    item.className = 'tags-panel__item';
+    item.setAttribute('role', 'listitem');
+    item.innerHTML = `
+      <div>${escapeHtml(tag.text)}</div>
+      <div class="tags-panel__meta">${escapeHtml(tag.type)}</div>
+    `;
+    item.addEventListener('click', () => {
+      focusOnTag(tag);
+      flashTag(tag);
+    });
+    list.appendChild(item);
+  });
+}
+
+function flashTag(tag){
+  if(!tag.node) return;
+  const tween = new Konva.Tween({
+    node: tag.node,
+    duration: 0.2,
+    opacity: 0.15,
+    yoyo: true,
+    repeat: 2
+  });
+  tween.play();
+}
+
+function focusOnTag(tag){
+  if(!tag.bbox) return;
+  const center = imageToStagePoint(tag.bbox.x + tag.bbox.width / 2, tag.bbox.y + tag.bbox.height / 2);
+  const scale = stage.scaleX();
+  stage.position({ x: stage.width() / 2 - center.x * scale, y: stage.height() / 2 - center.y * scale });
+  stage.batchDraw();
+}
+
+function renderTagHighlights(){
+  tagsLayer.destroyChildren();
+  detectedTags.forEach(tag => {
+    const rect = imageToStageRect(tag.bbox);
+    const node = new Konva.Rect({
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      fill: 'rgba(0, 255, 255, 0.35)',
+      stroke: 'rgba(0, 180, 180, 0.8)',
+      strokeWidth: 1
+    });
+    node.on('click', (e) => {
+      e.cancelBubble = true;
+      const center = imageToStagePoint(tag.bbox.x + tag.bbox.width / 2, tag.bbox.y + tag.bbox.height / 2);
+      addIsolationPinAt(center.x, center.y, tag.text);
+    });
+    tagsLayer.add(node);
+    tag.node = node;
+  });
+  tagsLayer.batchDraw();
+}
+
+function addDetectedTag(tag){
+  const key = `${tag.text.toUpperCase()}|${Math.round(tag.bbox.x)}|${Math.round(tag.bbox.y)}`;
+  if(detectedTags.some(t => `${t.text.toUpperCase()}|${Math.round(t.bbox.x)}|${Math.round(t.bbox.y)}` === key)) return;
+  detectedTags.push(tag);
+}
+
+/* Text extraction logic: pdf.js textContent for vector PDFs, OCR for raster PDFs/images */
+async function extractTagsFromPdfText(arrayBuffer){
+  const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdfDoc.getPage(1);
+  const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
+  const textContent = await page.getTextContent();
+  const items = textContent.items.filter(item => item.str && item.str.trim());
+  const hasText = items.length > 0;
+  if(!hasText) return { tags: [], hasText: false };
+
+  items.forEach(item => {
+    const matches = findTagMatches(item.str);
+    if(matches.length === 0) return;
+    const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+    const x = tx[4];
+    const y = tx[5] - (item.height * viewport.scale);
+    const width = item.width * viewport.scale;
+    const height = item.height * viewport.scale;
+    matches.forEach(match => {
+      addDetectedTag({
+        text: match.text,
+        type: match.type,
+        confidence: 0.95,
+        bbox: { x, y, width, height },
+        source: 'pdfText'
+      });
+    });
+  });
+
+  return { tags: detectedTags, hasText: true };
+}
+
+async function extractTagsWithOcr(imageDataUrl){
+  if(!window.Tesseract) throw new Error('Tesseract.js not available');
+  const result = await Tesseract.recognize(imageDataUrl, 'eng', { logger: () => {} });
+  (result.data.words || []).forEach(word => {
+    const value = (word.text || '').trim();
+    if(!value) return;
+    const matches = findTagMatches(value);
+    if(matches.length === 0) return;
+    const x = word.bbox.x0;
+    const y = word.bbox.y0;
+    const width = word.bbox.x1 - word.bbox.x0;
+    const height = word.bbox.y1 - word.bbox.y0;
+    matches.forEach(match => {
+      addDetectedTag({
+        text: match.text,
+        type: match.type,
+        confidence: (word.confidence || 0) / 100,
+        bbox: { x, y, width, height },
+        source: 'ocr'
+      });
+    });
+  });
+}
+
+async function extractTags(){
+  if(!pidImage || !currentPidFile){
+    alert('Upload a P&ID first.');
+    return;
+  }
+  clearDetectedTags();
+  const status = document.getElementById('tagsStatus');
+  if(status) status.textContent = 'Extracting tags...';
+
+  try{
+    if(currentPidFile.type === 'application/pdf' && currentPidPdfData){
+      const { hasText } = await extractTagsFromPdfText(currentPidPdfData);
+      if(!hasText && pidImageDataUrl){
+        await extractTagsWithOcr(pidImageDataUrl);
+      }
+    } else if(pidImageDataUrl){
+      await extractTagsWithOcr(pidImageDataUrl);
+    }
+    renderTagHighlights();
+    updateTagsList();
+  } catch(err){
+    console.error(err);
+    alert('Failed to extract tags.');
+    if(status) status.textContent = 'Tag extraction failed.';
+  }
+}
+
 /* Upload PID image (pdf or image) */
 document.getElementById('upload').addEventListener('change', async (ev)=>{
   const f = ev.target.files[0]; if(!f) return;
+  currentPidFile = f;
+  currentPidPdfData = null;
+  pidImageDataUrl = null;
+  pidImageMeta = null;
+  clearDetectedTags();
   const ext = f.name.split('.').pop().toLowerCase();
-  if(pidImage){ pidImage.destroy(); pidImage = null; mainLayer.batchDraw(); }
+  if(pidImage){ pidImage.destroy(); pidImage = null; pidLayer.batchDraw(); }
   if(ext === 'pdf'){
     startLoad();
     try{
       const ab = await f.arrayBuffer();
+      currentPidPdfData = ab;
       const pdfDoc = await pdfjsLib.getDocument({ data:ab }).promise;
       const page = await pdfDoc.getPage(1);
-      const vp = page.getViewport({ scale: 2 });
+      const vp = page.getViewport({ scale: PDF_RENDER_SCALE });
       const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
       await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
       const img = new Image();
-      img.onload = ()=>{ endLoad(); const fit = fitImageToStage(img.width,img.height); pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height }); mainLayer.add(pidImage); pidImage.moveToBottom(); mainLayer.batchDraw(); };
+      img.onload = ()=>{
+        endLoad();
+        const fit = fitImageToStage(img.width,img.height);
+        pidImageMeta = { width: img.width, height: img.height };
+        pidImageDataUrl = cv.toDataURL('image/png');
+        pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height });
+        pidLayer.add(pidImage);
+        pidImage.moveToBottom();
+        pidLayer.batchDraw();
+        tagsLayer.batchDraw();
+      };
       img.onerror = ()=>{ endLoad(); alert('Failed to render PDF page'); };
       img.src = cv.toDataURL('image/png');
     } catch(err){ endLoad(); console.error(err); alert('Failed to load PDF'); }
@@ -577,7 +884,17 @@ document.getElementById('upload').addEventListener('change', async (ev)=>{
   const reader = new FileReader();
   reader.onload = ()=>{
     const img = new Image();
-    img.onload = ()=>{ endLoad(); const fit = fitImageToStage(img.width,img.height); pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height }); mainLayer.add(pidImage); pidImage.moveToBottom(); mainLayer.batchDraw(); };
+    img.onload = ()=>{
+      endLoad();
+      const fit = fitImageToStage(img.width,img.height);
+      pidImageMeta = { width: img.width, height: img.height };
+      pidImageDataUrl = reader.result;
+      pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height });
+      pidLayer.add(pidImage);
+      pidImage.moveToBottom();
+      pidLayer.batchDraw();
+      tagsLayer.batchDraw();
+    };
     img.onerror = ()=>{ endLoad(); alert('Failed to load image'); };
     img.src = reader.result;
   };
@@ -586,7 +903,23 @@ document.getElementById('upload').addEventListener('change', async (ev)=>{
 
 /* Buttons: reset, undo, new project */
 document.getElementById('reset').addEventListener('click', ()=>{ if(!confirm('Clear diagram and tables?')) return; annotations.forEach(a=>{}); // destroy shapes
-  mainLayer.destroyChildren(); annotations=[]; document.querySelector('#pointsTable tbody').innerHTML=''; document.querySelector('#deisoTable tbody').innerHTML=''; pidImage=null; stage.add(mainLayer); mainLayer.batchDraw();
+  pidLayer.destroyChildren();
+  tagsLayer.destroyChildren();
+  mainLayer.destroyChildren();
+  annotations=[];
+  document.querySelector('#pointsTable tbody').innerHTML='';
+  document.querySelector('#deisoTable tbody').innerHTML='';
+  pidImage=null;
+  pidImageMeta=null;
+  currentPidFile=null;
+  currentPidPdfData=null;
+  pidImageDataUrl=null;
+  detectedTags=[];
+  stage.add(pidLayer);
+  stage.add(tagsLayer);
+  stage.add(mainLayer);
+  stage.batchDraw();
+  updateTagsList();
 });
 document.getElementById('undo').addEventListener('click', ()=>{
   const last = annotations.pop();
@@ -866,9 +1199,16 @@ function loadDraftData(saved) {
   if (!saved) return alert('No data to load.');
 
   // Clear stage + existing data
+  pidLayer.destroyChildren();
+  tagsLayer.destroyChildren();
   mainLayer.destroyChildren();
   annotations = [];
   pidImage = null;
+  pidImageMeta = null;
+  currentPidFile = null;
+  currentPidPdfData = null;
+  pidImageDataUrl = null;
+  detectedTags = [];
 
   // -----------------------
   // Restore PID image
@@ -886,9 +1226,10 @@ function loadDraftData(saved) {
         width: saved.pid.width || fit.width,
         height: saved.pid.height || fit.height
       });
-      mainLayer.add(pidImage);
+      pidImageMeta = { width: saved.pid.width || img.width, height: saved.pid.height || img.height };
+      pidLayer.add(pidImage);
       pidImage.moveToBottom();
-      mainLayer.batchDraw();
+      pidLayer.batchDraw();
     };
     img.onerror = () => { endLoad(); console.warn('Could not reload PID image'); };
     img.src = saved.pid.src;
@@ -1060,8 +1401,9 @@ function loadDraftData(saved) {
     diBody.appendChild(tr);
   });
 
-  mainLayer.batchDraw();
+  stage.batchDraw();
   updateDeisoTable();
+  updateTagsList();
   alert('Draft loaded successfully.');
 }
 
@@ -1175,9 +1517,15 @@ document.getElementById('baselineBtn').addEventListener('click', () => {
 });
 
 /* ---------------------------
+  Tags panel events
+   --------------------------- */
+document.getElementById('extractTagsBtn').addEventListener('click', extractTags);
+document.getElementById('tagsSearch').addEventListener('input', updateTagsList);
+
+/* ---------------------------
   Resize handling
    --------------------------- */
-window.addEventListener('resize', ()=>{ stage.width(window.innerWidth - 50); mainLayer.batchDraw(); });
+window.addEventListener('resize', ()=>{ stage.width(containerEl.clientWidth); stage.batchDraw(); });
 updateExportButtonState();
 </script>
 

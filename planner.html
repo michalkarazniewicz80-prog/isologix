@@ -138,7 +138,16 @@ header { position:sticky; top:0; background:white; border-bottom:3px solid var(-
 button, select, .file-btn { background: var(--light); border:1px solid var(--accent); padding:6px 10px; border-radius:6px; font-weight:700; color:#053a66; cursor:pointer; font-size:13px; }
 button[disabled]{opacity:0.5;cursor:not-allowed;}
 #symbolSelect{width:160px;}
-#container{width:100%;height:700px;border:1px solid #aaa;background:#fff;cursor:crosshair;}
+.planner-layout{display:flex;gap:12px;padding:0 12px 12px;}
+#pidSidebar{width:220px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;padding:10px;display:flex;flex-direction:column;gap:10px;}
+#pidSidebar h3{margin:0;font-size:14px;color:#0b4a8b;}
+#pidList{display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:640px;}
+.pid-thumb{border:1px solid #cbd5e1;border-radius:8px;padding:6px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:box-shadow .2s,border-color .2s;}
+.pid-thumb.active{border-color:#0b4a8b;box-shadow:0 0 0 2px rgba(11,74,139,.2);}
+.pid-thumb img{width:100%;height:120px;object-fit:contain;background:#f1f5f9;border-radius:6px;}
+.pid-thumb .pid-label{font-size:12px;font-weight:600;color:#0f172a;word-break:break-word;}
+.pid-empty{font-size:12px;color:#64748b;padding:6px 0;}
+#container{flex:1;height:700px;border:1px solid #aaa;background:#fff;cursor:crosshair;}
 table{border-collapse:collapse;width:98%;margin:10px auto;font-size:14px;table-layout:fixed;}
 th,td{border:2px solid #aaa;padding:10px;text-align:left;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
 th{background:var(--light);color:var(--navy);font-weight:700;}
@@ -170,8 +179,8 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
 <header>
   <div class="toolbar">
     <div class="row">
-  <label class="file-btn">Choose File
-    <input id="upload" type="file" accept=".png,.jpg,.jpeg,.pdf">
+  <label class="file-btn">Add P&amp;ID
+    <input id="upload" type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
   </label>
 
   <!-- spacer pushes logo + user section to the right -->
@@ -218,7 +227,15 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
   </div>
 </header>
 
-<div id="container"></div>
+<div class="planner-layout">
+  <aside id="pidSidebar">
+    <h3>P&amp;ID Drawings</h3>
+    <div id="pidList">
+      <div class="pid-empty">Upload one or more P&amp;IDs to start.</div>
+    </div>
+  </aside>
+  <div id="container"></div>
+</div>
 
 <h3>Isolation Points</h3>
 <table id="pointsTable">
@@ -252,10 +269,14 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.8.162/pdf.worker.min.js';
 const { jsPDF } = window.jspdf;
 
-const stage = new Konva.Stage({ container:'container', width:window.innerWidth-24, height:700 });
+const containerEl = document.getElementById('container');
+const stage = new Konva.Stage({ container:'container', width:containerEl?.offsetWidth || window.innerWidth-24, height:700 });
 const mainLayer = new Konva.Layer(); stage.add(mainLayer);
 
 let tool='', activeSymbol='', annotations=[], drawing=false, currentLine=null, currentPts=[], shiftPressed=false, textActive=false, pidImage=null;
+let drawings = [];
+let currentDrawingIndex = -1;
+let drawingCounter = 1;
 const SYMBOLS = { valve: 'symbols/valve.png', flange: 'symbols/flange.png', hose_connection: 'symbols/hose_connection.png' };
 const BASE_PIN_RADIUS = 6, SYMBOL_SCALE = 0.42;
 let loadingImages = 0;
@@ -271,6 +292,310 @@ function fitImageToStage(imgW,imgH){
   const stageW = stage.width(), stageH = stage.height();
   const scale = Math.min(stageW / imgW, stageH / imgH, 1);
   return { width: imgW * scale, height: imgH * scale, scale };
+}
+
+function renderPidList(){
+  const list = document.getElementById('pidList');
+  if (!list) return;
+  list.innerHTML = '';
+  if (drawings.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'pid-empty';
+    empty.textContent = 'Upload one or more P&IDs to start.';
+    list.appendChild(empty);
+    return;
+  }
+  drawings.forEach((drawing, index) => {
+    const item = document.createElement('div');
+    item.className = `pid-thumb${index === currentDrawingIndex ? ' active' : ''}`;
+    const img = document.createElement('img');
+    img.alt = drawing.name || `P&ID ${index + 1}`;
+    img.src = drawing.thumbnail || drawing.pid?.src || '';
+    if (!img.src) img.style.background = '#e2e8f0';
+    const label = document.createElement('div');
+    label.className = 'pid-label';
+    label.textContent = drawing.name || `P&ID ${index + 1}`;
+    item.appendChild(img);
+    item.appendChild(label);
+    item.addEventListener('click', () => switchDrawing(index));
+    list.appendChild(item);
+  });
+}
+
+function clearStage(){
+  mainLayer.destroyChildren();
+  annotations = [];
+  pidImage = null;
+  mainLayer.batchDraw();
+}
+
+function buildDrawingState(){
+  let pid = null;
+  if(pidImage) {
+    const attrs = pidImage.getAttrs();
+    const img = attrs.image;
+    pid = { src: img?.src || null, x: attrs.x, y: attrs.y, width: attrs.width, height: attrs.height };
+  }
+
+  const anno = [];
+  mainLayer.getChildren().forEach(node => {
+    if(node === pidImage) return;
+    switch(node.className) {
+      case 'Circle':
+        anno.push({ shapeType: 'circle', attrs: node.getAttrs(), meta: node.meta || {} });
+        break;
+      case 'Line':
+        anno.push({ shapeType: 'line', attrs: node.getAttrs(), points: node.points().slice() });
+        break;
+      case 'Image':
+        const imgAttrs = node.getAttrs();
+        anno.push({
+          shapeType: 'image',
+          attrs: { x: imgAttrs.x, y: imgAttrs.y, width: imgAttrs.width, height: imgAttrs.height, rotation: imgAttrs.rotation, annoId: imgAttrs.annoId },
+          src: imgAttrs.image?.src || null,
+          meta: node.meta || {}
+        });
+        break;
+      case 'Text':
+        anno.push({
+          shapeType: 'text',
+          attrs: { x: node.x(), y: node.y(), text: node.text(), fontSize: node.fontSize(), fill: node.fill(), annoId: node.getAttr('annoId') },
+          meta: node.meta || {}
+        });
+        break;
+      case 'Group':
+        const children = node.getChildren().toArray();
+        const txtChild = children.find(c => c.className === 'Text');
+        anno.push({
+          shapeType: 'group',
+          attrs: { x: node.x(), y: node.y(), text: txtChild?.text() || '', annoId: node.getAttr('annoId') },
+          meta: node.meta || {}
+        });
+        break;
+    }
+  });
+
+  return { pid, annotations: anno };
+}
+
+function saveCurrentDrawing(){
+  if (currentDrawingIndex < 0 || !drawings[currentDrawingIndex]) return;
+  const state = buildDrawingState();
+  drawings[currentDrawingIndex].pid = state.pid;
+  drawings[currentDrawingIndex].annotations = state.annotations;
+  updateDrawingThumbnail(currentDrawingIndex);
+}
+
+function updateDrawingThumbnail(index){
+  if (!drawings[index]) return;
+  try {
+    if (index === currentDrawingIndex) {
+      const thumb = stage.toDataURL({ pixelRatio: 0.2 });
+      drawings[index].thumbnail = thumb;
+    } else if (drawings[index].pid?.src) {
+      drawings[index].thumbnail = drawings[index].pid.src;
+    }
+  } catch (e) {
+    console.warn('Thumbnail capture failed', e);
+  }
+  renderPidList();
+}
+
+function restoreAnnotations(savedAnnotations){
+  (savedAnnotations || []).forEach(a => {
+    try {
+      let node, idText;
+      switch (a.shapeType) {
+        case 'circle':
+          node = new Konva.Circle({
+            x: a.attrs.x || 0,
+            y: a.attrs.y || 0,
+            radius: a.attrs.radius || BASE_PIN_RADIUS,
+            fill: a.attrs.fill || 'rgba(255,0,0,0.7)',
+            stroke: a.attrs.stroke || '#111',
+            strokeWidth: a.attrs.strokeWidth || 1,
+            draggable: true
+          });
+          idText = new Konva.Text({
+            x: (a.attrs.x || 0) + 8,
+            y: (a.attrs.y || 0) - 12,
+            text: String(a.attrs.id || ''),
+            fontSize: 12,
+            fill: '#111',
+            listening: false
+          });
+          const annoId = a.attrs.annoId || genAnnoId();
+          node.setAttr('annoId', annoId);
+          idText.setAttr('annoId', annoId);
+          mainLayer.add(node);
+          mainLayer.add(idText);
+          annotations.push({ annoId, id: a.attrs.id || null, shapeType: 'circle', attrs: a.attrs });
+          break;
+        case 'image':
+          if (a.src) {
+            startLoad();
+            const imgObj = new Image();
+            imgObj.onload = () => {
+              endLoad();
+              node = new Konva.Image({
+                image: imgObj,
+                x: a.attrs.x || 0,
+                y: a.attrs.y || 0,
+                width: a.attrs.width || (imgObj.width * SYMBOL_SCALE),
+                height: a.attrs.height || (imgObj.height * SYMBOL_SCALE),
+                rotation: a.attrs.rotation || 0,
+                draggable: true
+              });
+              const imageId = a.attrs.annoId || genAnnoId();
+              node.setAttr('annoId', imageId);
+              mainLayer.add(node);
+              annotations.push({ annoId: imageId, shapeType: 'image', src: a.src, attrs: a.attrs });
+              mainLayer.batchDraw();
+            };
+            imgObj.onerror = () => { endLoad(); console.warn('Failed symbol image load: ' + a.src); };
+            imgObj.src = a.src;
+          }
+          break;
+        case 'line':
+          node = new Konva.Line({
+            points: a.points || a.attrs.points || [],
+            stroke: a.attrs.stroke || '#000',
+            strokeWidth: a.attrs.strokeWidth || 1,
+            dash: a.attrs.dash || [],
+            draggable: false
+          });
+          const lineId = a.attrs.annoId || genAnnoId();
+          node.setAttr('annoId', lineId);
+          mainLayer.add(node);
+          annotations.push({ annoId: lineId, shapeType: 'line', points: a.points || a.attrs.points || [], attrs: a.attrs });
+          break;
+        case 'text':
+          node = new Konva.Text(a.attrs);
+          if (a.meta) node.meta = a.meta;
+          mainLayer.add(node);
+          annotations.push({ annoId: a.attrs.annoId || genAnnoId(), shapeType: 'text', attrs: a.attrs });
+          break;
+        case 'group':
+          node = new Konva.Group({
+            x: a.attrs.x || 0,
+            y: a.attrs.y || 0,
+            draggable: true
+          });
+          const txt = new Konva.Text({
+            x: 8,
+            y: 8,
+            text: a.attrs.text || '',
+            fontSize: 14,
+            fill: '#111'
+          });
+          const rect = new Konva.Rect({
+            x: 0,
+            y: 0,
+            width: txt.width() + 16,
+            height: txt.height() + 16,
+            stroke: '#000',
+            dash: [6, 4],
+            fill: 'transparent'
+          });
+          node.add(rect);
+          node.add(txt);
+          const grpId = a.attrs.annoId || genAnnoId();
+          node.setAttr('annoId', grpId);
+          mainLayer.add(node);
+          annotations.push({ annoId: grpId, shapeType: 'group', attrs: a.attrs });
+          break;
+      }
+    } catch (e) {
+      console.error('restore annotation error', e);
+    }
+  });
+}
+
+function loadDrawingState(drawing){
+  if (!drawing) return;
+  clearStage();
+  if (drawing.pid?.src) {
+    startLoad();
+    const img = new Image();
+    img.onload = () => {
+      endLoad();
+      const fit = fitImageToStage(drawing.pid.width || img.width, drawing.pid.height || img.height);
+      pidImage = new Konva.Image({
+        image: img,
+        x: drawing.pid.x || 0,
+        y: drawing.pid.y || 0,
+        width: drawing.pid.width || fit.width,
+        height: drawing.pid.height || fit.height
+      });
+      mainLayer.add(pidImage);
+      pidImage.moveToBottom();
+      mainLayer.batchDraw();
+    };
+    img.onerror = () => { endLoad(); console.warn('Could not reload PID image'); };
+    img.src = drawing.pid.src;
+  }
+  restoreAnnotations(drawing.annotations);
+  mainLayer.batchDraw();
+}
+
+function switchDrawing(index){
+  if (index === currentDrawingIndex) return;
+  saveCurrentDrawing();
+  currentDrawingIndex = index;
+  loadDrawingState(drawings[index]);
+  renderPidList();
+}
+
+async function readFileAsPidData(file){
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'pdf') {
+    const ab = await file.arrayBuffer();
+    const pdfDoc = await pdfjsLib.getDocument({ data:ab }).promise;
+    const page = await pdfDoc.getPage(1);
+    const vp = page.getViewport({ scale: 2 });
+    const cv = document.createElement('canvas');
+    cv.width = vp.width;
+    cv.height = vp.height;
+    await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+    return { src: cv.toDataURL('image/png'), width: cv.width, height: cv.height };
+  }
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const img = await new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = dataUrl;
+  });
+  return { src: dataUrl, width: img.width, height: img.height };
+}
+
+async function addDrawingFromFile(file){
+  startLoad();
+  try {
+    const pid = await readFileAsPidData(file);
+    endLoad();
+    const drawing = {
+      id: `drawing_${Date.now()}_${drawingCounter++}`,
+      name: file.name,
+      pid,
+      annotations: []
+    };
+    drawings.push(drawing);
+    if (currentDrawingIndex === -1) {
+      currentDrawingIndex = 0;
+      loadDrawingState(drawing);
+    }
+    updateDrawingThumbnail(drawings.length - 1);
+  } catch (err) {
+    endLoad();
+    console.error('Failed to load P&ID file', err);
+    alert('Failed to load P&ID file.');
+  }
 }
 
 function defaultCategoryForTool(t){ return t==='point' || t==='vent' ? 'Process' : t==='spade' ? 'Mechanical' : ''; }
@@ -553,40 +878,25 @@ function insertSymbol(name,x,y){
 
 /* Upload PID image (pdf or image) */
 document.getElementById('upload').addEventListener('change', async (ev)=>{
-  const f = ev.target.files[0]; if(!f) return;
-  const ext = f.name.split('.').pop().toLowerCase();
-  if(pidImage){ pidImage.destroy(); pidImage = null; mainLayer.batchDraw(); }
-  if(ext === 'pdf'){
-    startLoad();
-    try{
-      const ab = await f.arrayBuffer();
-      const pdfDoc = await pdfjsLib.getDocument({ data:ab }).promise;
-      const page = await pdfDoc.getPage(1);
-      const vp = page.getViewport({ scale: 2 });
-      const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
-      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-      const img = new Image();
-      img.onload = ()=>{ endLoad(); const fit = fitImageToStage(img.width,img.height); pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height }); mainLayer.add(pidImage); pidImage.moveToBottom(); mainLayer.batchDraw(); };
-      img.onerror = ()=>{ endLoad(); alert('Failed to render PDF page'); };
-      img.src = cv.toDataURL('image/png');
-    } catch(err){ endLoad(); console.error(err); alert('Failed to load PDF'); }
-    return;
+  const files = Array.from(ev.target.files || []);
+  if (!files.length) return;
+  saveCurrentDrawing();
+  for (const file of files) {
+    await addDrawingFromFile(file);
   }
-
-  startLoad();
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    const img = new Image();
-    img.onload = ()=>{ endLoad(); const fit = fitImageToStage(img.width,img.height); pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height }); mainLayer.add(pidImage); pidImage.moveToBottom(); mainLayer.batchDraw(); };
-    img.onerror = ()=>{ endLoad(); alert('Failed to load image'); };
-    img.src = reader.result;
-  };
-  reader.readAsDataURL(f);
+  renderPidList();
+  ev.target.value = '';
 });
 
 /* Buttons: reset, undo, new project */
-document.getElementById('reset').addEventListener('click', ()=>{ if(!confirm('Clear diagram and tables?')) return; annotations.forEach(a=>{}); // destroy shapes
-  mainLayer.destroyChildren(); annotations=[]; document.querySelector('#pointsTable tbody').innerHTML=''; document.querySelector('#deisoTable tbody').innerHTML=''; pidImage=null; stage.add(mainLayer); mainLayer.batchDraw();
+document.getElementById('reset').addEventListener('click', ()=>{ if(!confirm('Clear all drawings and tables?')) return;
+  drawings = [];
+  currentDrawingIndex = -1;
+  drawingCounter = 1;
+  clearStage();
+  document.querySelector('#pointsTable tbody').innerHTML='';
+  document.querySelector('#deisoTable tbody').innerHTML='';
+  renderPidList();
 });
 document.getElementById('undo').addEventListener('click', ()=>{
   const last = annotations.pop();
@@ -784,6 +1094,7 @@ async function requireUserOrThrow(){
 
 /* Build save object with everything needed to restore */
 function buildSaveObject() {
+  saveCurrentDrawing();
   // -----------------------
   // Tables
   // -----------------------
@@ -801,63 +1112,17 @@ function buildSaveObject() {
     deiso: tr.querySelector('.deiso-select')?.value || ''
   }));
 
-  // -----------------------
-  // pidImage
-  // -----------------------
-  let pid = null;
-  if(pidImage) {
-    const attrs = pidImage.getAttrs();
-    const img = attrs.image;
-    pid = { src: img?.src || null, x: attrs.x, y: attrs.y, width: attrs.width, height: attrs.height };
-  }
-
-  // -----------------------
-  // Annotations: shapes + groups
-  // -----------------------
-  const annotations = [];
-  mainLayer.getChildren().forEach(node => {
-    if(node === pidImage) return; // skip pidImage (already saved)
-    
-    switch(node.className) {
-      case 'Circle':
-        annotations.push({ shapeType: 'circle', attrs: node.getAttrs(), meta: node.meta || {} });
-        break;
-      case 'Line':
-        annotations.push({ shapeType: 'line', attrs: node.getAttrs(), points: node.points().slice() });
-        break;
-      case 'Image':
-        const imgAttrs = node.getAttrs();
-        annotations.push({
-          shapeType: 'image',
-          attrs: { x: imgAttrs.x, y: imgAttrs.y, width: imgAttrs.width, height: imgAttrs.height, rotation: imgAttrs.rotation },
-          src: imgAttrs.image?.src || null,
-          meta: node.meta || {}
-        });
-        break;
-      case 'Text':
-        annotations.push({
-          shapeType: 'text',
-          attrs: { x: node.x(), y: node.y(), text: node.text(), fontSize: node.fontSize(), fill: node.fill() },
-          meta: node.meta || {}
-        });
-        break;
-      case 'Group':
-        const children = node.getChildren().toArray();
-        const txtChild = children.find(c => c.className === 'Text');
-        annotations.push({
-          shapeType: 'group',
-          attrs: { x: node.x(), y: node.y(), text: txtChild?.text() || '' },
-          meta: node.meta || {}
-        });
-        break;
-    }
-  });
-
   return {
     points,
     deiso,
-    pid,
-    annotations
+    drawings: drawings.map(d => ({
+      id: d.id,
+      name: d.name,
+      pid: d.pid,
+      annotations: d.annotations || [],
+      thumbnail: d.thumbnail || null
+    })),
+    currentDrawingIndex
   };
 }
 
@@ -865,152 +1130,28 @@ function buildSaveObject() {
 function loadDraftData(saved) {
   if (!saved) return alert('No data to load.');
 
-  // Clear stage + existing data
-  mainLayer.destroyChildren();
-  annotations = [];
-  pidImage = null;
-
-  // -----------------------
-  // Restore PID image
-  // -----------------------
-  if (saved.pid?.src) {
-    startLoad();
-    const img = new Image();
-    img.onload = () => {
-      endLoad();
-      const fit = fitImageToStage(saved.pid.width || img.width, saved.pid.height || img.height);
-      pidImage = new Konva.Image({
-        image: img,
-        x: saved.pid.x || 0,
-        y: saved.pid.y || 0,
-        width: saved.pid.width || fit.width,
-        height: saved.pid.height || fit.height
-      });
-      mainLayer.add(pidImage);
-      pidImage.moveToBottom();
-      mainLayer.batchDraw();
-    };
-    img.onerror = () => { endLoad(); console.warn('Could not reload PID image'); };
-    img.src = saved.pid.src;
+  drawings = [];
+  currentDrawingIndex = -1;
+  if (Array.isArray(saved.drawings) && saved.drawings.length) {
+    drawings = saved.drawings.map(d => ({
+      id: d.id || `drawing_${Date.now()}_${drawingCounter++}`,
+      name: d.name || 'Untitled',
+      pid: d.pid || null,
+      annotations: d.annotations || [],
+      thumbnail: d.thumbnail || null
+    }));
+    currentDrawingIndex = Number.isInteger(saved.currentDrawingIndex) ? saved.currentDrawingIndex : 0;
+  } else if (saved.pid || saved.annotations) {
+    drawings = [{
+      id: `drawing_${Date.now()}_${drawingCounter++}`,
+      name: 'P&ID 1',
+      pid: saved.pid || null,
+      annotations: saved.annotations || [],
+      thumbnail: null
+    }];
+    currentDrawingIndex = 0;
   }
-
-  // -----------------------
-  // Restore annotations (shapes, lines, images, text)
-  // -----------------------
-  (saved.annotations || []).forEach(a => {
-    try {
-      let node, idText;
-
-      switch (a.shapeType) {
-        case 'circle':
-          node = new Konva.Circle({
-            x: a.attrs.x || 0,
-            y: a.attrs.y || 0,
-            radius: a.attrs.radius || BASE_PIN_RADIUS,
-            fill: a.attrs.fill || 'rgba(255,0,0,0.7)',
-            stroke: a.attrs.stroke || '#111',
-            strokeWidth: a.attrs.strokeWidth || 1,
-            draggable: true
-          });
-          // restore number label for circle
-          idText = new Konva.Text({
-            x: (a.attrs.x || 0) + 8,
-            y: (a.attrs.y || 0) - 12,
-            text: String(a.attrs.id || ''),
-            fontSize: 12,
-            fill: '#111',
-            listening: false
-          });
-          const annoId = a.attrs.annoId || genAnnoId();
-          node.setAttr('annoId', annoId);
-          idText.setAttr('annoId', annoId);
-          mainLayer.add(node);
-          mainLayer.add(idText);
-          annotations.push({ annoId, id: a.attrs.id || null, shapeType: 'circle', attrs: a.attrs });
-          break;
-
-        case 'image':
-          if (a.src) {
-            startLoad();
-            const imgObj = new Image();
-            imgObj.onload = () => {
-              endLoad();
-              node = new Konva.Image({
-                image: imgObj,
-                x: a.attrs.x || 0,
-                y: a.attrs.y || 0,
-                width: a.attrs.width || (imgObj.width * SYMBOL_SCALE),
-                height: a.attrs.height || (imgObj.height * SYMBOL_SCALE),
-                rotation: a.attrs.rotation || 0,
-                draggable: true
-              });
-              const imageId = a.attrs.annoId || genAnnoId();
-              node.setAttr('annoId', imageId);
-              mainLayer.add(node);
-              annotations.push({ annoId: imageId, shapeType: 'image', src: a.src, attrs: a.attrs });
-              mainLayer.batchDraw();
-            };
-            imgObj.onerror = () => { endLoad(); console.warn('Failed symbol image load: ' + a.src); };
-            imgObj.src = a.src;
-          }
-          break;
-
-        case 'line':
-          node = new Konva.Line({
-            points: a.points || a.attrs.points || [],
-            stroke: a.attrs.stroke || '#000',
-            strokeWidth: a.attrs.strokeWidth || 1,
-            dash: a.attrs.dash || [],
-            draggable: false
-          });
-          const lineId = a.attrs.annoId || genAnnoId();
-          node.setAttr('annoId', lineId);
-          mainLayer.add(node);
-          annotations.push({ annoId: lineId, shapeType: 'line', points: a.points || a.attrs.points || [], attrs: a.attrs });
-          break;
-
-        case 'text':
-          node = new Konva.Text(a.attrs);
-          if (a.meta) node.meta = a.meta;
-          mainLayer.add(node);
-          annotations.push({ annoId: a.attrs.annoId || genAnnoId(), shapeType: 'text', attrs: a.attrs });
-          break;
-
-        case 'group':
-          node = new Konva.Group({
-            x: a.attrs.x || 0,
-            y: a.attrs.y || 0,
-            draggable: true
-          });
-          const txt = new Konva.Text({
-            x: 8,
-            y: 8,
-            text: a.attrs.text || '',
-            fontSize: 14,
-            fill: '#111'
-          });
-          const rect = new Konva.Rect({
-            x: 0,
-            y: 0,
-            width: txt.width() + 16,
-            height: txt.height() + 16,
-            stroke: '#000',
-            dash: [6, 4],
-            fill: 'transparent'
-          });
-          node.add(rect);
-          node.add(txt);
-          const grpId = a.attrs.annoId || genAnnoId();
-          node.setAttr('annoId', grpId);
-          mainLayer.add(node);
-          annotations.push({ annoId: grpId, shapeType: 'group', attrs: a.attrs });
-          break;
-      }
-
-    } catch (e) {
-      console.error('restore annotation error', e);
-    }
-  });
+  drawingCounter = drawings.length + 1;
 
   // -----------------------
   // Restore tables
@@ -1060,7 +1201,12 @@ function loadDraftData(saved) {
     diBody.appendChild(tr);
   });
 
-  mainLayer.batchDraw();
+  if (drawings.length) {
+    loadDrawingState(drawings[currentDrawingIndex] || drawings[0]);
+  } else {
+    clearStage();
+  }
+  renderPidList();
   updateDeisoTable();
   alert('Draft loaded successfully.');
 }
@@ -1177,8 +1323,16 @@ document.getElementById('baselineBtn').addEventListener('click', () => {
 /* ---------------------------
   Resize handling
    --------------------------- */
-window.addEventListener('resize', ()=>{ stage.width(window.innerWidth - 50); mainLayer.batchDraw(); });
+function resizeStageToContainer(){
+  if (!containerEl) return;
+  stage.width(containerEl.offsetWidth || window.innerWidth - 50);
+  mainLayer.batchDraw();
+}
+
+window.addEventListener('resize', resizeStageToContainer);
+resizeStageToContainer();
 updateExportButtonState();
+renderPidList();
 </script>
 
 </body>

@@ -155,6 +155,9 @@ input[type=text],select{width:100%;padding:6px;border-radius:6px;border:1px soli
 .logo{height:60px;margin-left:auto;}
 input[type=file]{display:none;}
 #pointsTable th:first-child,#pointsTable td:first-child,#deisoTable th:first-child,#deisoTable td:first-child{width:40px;text-align:center;}
+#deisoTable th:last-child,#deisoTable td:last-child{width:80px;text-align:center;}
+.deiso-actions{display:flex;gap:4px;justify-content:center;}
+.deiso-actions button{padding:4px 6px;font-size:12px;}
 .tools-left{display:flex;gap:8px;align-items:center;}
 footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-size:12px;color:#666;border-top:1px solid #ccc;}
 .user-menu{display:flex;align-items:center;position:relative;}
@@ -245,7 +248,7 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
 
 <h3>De-Isolation Order</h3>
 <table id="deisoTable">
-  <thead><tr><th>ID</th><th>Description</th><th>Category</th><th>De-Isolated State</th></tr></thead>
+  <thead><tr><th>ID</th><th>Description</th><th>Category</th><th>De-Isolated State</th><th>Order</th></tr></thead>
   <tbody></tbody>
 </table>
 
@@ -622,8 +625,9 @@ function updateDeisoTable(){
     iso: r.children[3].querySelector('select')?.value || '',
     tool: r.dataset.tool || ''
   }));
-  rows.reverse().forEach(row=>{
+  rows.reverse().forEach((row, index)=>{
     const tr = document.createElement('tr');
+    tr.dataset.rowIndex = index;
     const autoDe = mapIsoToDeiso(row.iso, row.tool);
     tr.innerHTML = `
       <td>${row.id}</td>
@@ -641,9 +645,37 @@ function updateDeisoTable(){
         <option ${autoDe==='Reconnected'?'selected':''}>Reconnected</option>
         <option ${autoDe==='Closed'?'selected':''}>Closed</option>
       </select></td>
+      <td>
+        <div class="deiso-actions">
+          <button type="button" class="deiso-up" aria-label="Move up">↑</button>
+          <button type="button" class="deiso-down" aria-label="Move down">↓</button>
+        </div>
+      </td>
     `;
     tbody.appendChild(tr);
   });
+  updateDeisoOrderControls();
+}
+
+function updateDeisoOrderControls(){
+  const rows = Array.from(document.querySelectorAll('#deisoTable tbody tr'));
+  rows.forEach((row, index) => {
+    const upBtn = row.querySelector('.deiso-up');
+    const downBtn = row.querySelector('.deiso-down');
+    if (upBtn) upBtn.disabled = index === 0;
+    if (downBtn) downBtn.disabled = index === rows.length - 1;
+  });
+}
+
+function moveDeisoRow(currentRow, direction){
+  const tbody = document.querySelector('#deisoTable tbody');
+  if (!tbody || !currentRow) return;
+  if (direction === 'up' && currentRow.previousElementSibling) {
+    tbody.insertBefore(currentRow, currentRow.previousElementSibling);
+  } else if (direction === 'down' && currentRow.nextElementSibling) {
+    tbody.insertBefore(currentRow.nextElementSibling, currentRow);
+  }
+  updateDeisoOrderControls();
 }
 
 function escapeHtml(s){ return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
@@ -818,6 +850,19 @@ function addPointRow(id,type,circle){
   tbody.appendChild(tr);
   updateDeisoTable();
 }
+
+document.querySelector('#deisoTable tbody').addEventListener('click', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  const row = target.closest('tr');
+  if (!row) return;
+  if (target.classList.contains('deiso-up')) {
+    moveDeisoRow(row, 'up');
+  }
+  if (target.classList.contains('deiso-down')) {
+    moveDeisoRow(row, 'down');
+  }
+});
 
 /* Pulse helpers */
 function startPulse(node){
@@ -1210,6 +1255,12 @@ function loadDraftData(saved) {
           <option ${d.deiso==='Reconnected'?'selected':''}>Reconnected</option>
           <option ${d.deiso==='Closed'?'selected':''}>Closed</option>
       </select></td>
+      <td>
+        <div class="deiso-actions">
+          <button type="button" class="deiso-up" aria-label="Move up">↑</button>
+          <button type="button" class="deiso-down" aria-label="Move down">↓</button>
+        </div>
+      </td>
     `;
     diBody.appendChild(tr);
   });
@@ -1221,6 +1272,7 @@ function loadDraftData(saved) {
   }
   renderPidList();
   updateDeisoTable();
+  updateDeisoOrderControls();
   alert('Draft loaded successfully.');
 }
 

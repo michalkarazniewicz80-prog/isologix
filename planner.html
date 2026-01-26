@@ -588,6 +588,30 @@ const TAG_RULES = [
 const GENERIC_TAG_REGEX = /\b(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9-]{4,}\b/gi;
 const TAG_MATCH_DISTANCE = 80;
 
+/* Normalize tag case and separators for consistent output */
+function normalizeTag(text){
+  return String(text || '')
+    .toUpperCase()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/[^A-Z0-9-]/g, '')
+    .trim();
+}
+
+function formatTag(text, type){
+  const normalized = normalizeTag(text);
+  if(type === 'Line') return normalized;
+  if(type === 'PSV'){
+    const match = normalized.match(/^(PSV)-?(\d+)([A-Z]?)$/);
+    if(match) return `${match[1]}-${match[2]}${match[3]}`;
+  }
+  if(type === 'Valve' || type === 'Equipment'){
+    const match = normalized.match(/^([A-Z]+)-?(\d+)([A-Z]?)$/);
+    if(match) return `${match[1]}-${match[2]}${match[3]}`;
+  }
+  return normalized;
+}
+
 function isExcludedTag(text){
   const cleaned = text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
   return TAG_EXCLUDE.has(cleaned);
@@ -600,7 +624,7 @@ function findTagMatches(text){
   TAG_RULES.forEach(rule => {
     const re = new RegExp(rule.regex.source, 'gi');
     for(const match of text.matchAll(re)){
-      const value = match[0].trim();
+      const value = formatTag(match[0].trim(), rule.type);
       if(!value || isExcludedTag(value)) continue;
       const key = value.toUpperCase();
       if(!seen.has(key)){
@@ -611,7 +635,7 @@ function findTagMatches(text){
   });
   if(matches.length === 0){
     for(const match of text.matchAll(GENERIC_TAG_REGEX)){
-      const value = match[0].trim();
+      const value = normalizeTag(match[0].trim());
       if(!value || isExcludedTag(value)) continue;
       const key = value.toUpperCase();
       if(!seen.has(key)){

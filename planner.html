@@ -586,7 +586,8 @@ const TAG_RULES = [
   { type: 'Line', regex: /\b\d{2,4}-[A-Z]{1,4}-\d{2,4}(?:-\d{1,2})?\b/gi }
 ];
 const GENERIC_TAG_REGEX = /\b(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9-]{4,}\b/gi;
-const TAG_MATCH_DISTANCE = 80;
+const TAG_MATCH_DISTANCE = 120;
+const TAG_BBOX_PAD = 6;
 
 function normalizeInputText(text){
   return String(text || '')
@@ -742,6 +743,7 @@ async function extractTagsFromPdfText(arrayBuffer){
 async function extractTagsWithOcr(imageDataUrl){
   if(!window.Tesseract) throw new Error('Tesseract.js not available');
   const result = await Tesseract.recognize(imageDataUrl, 'eng', { logger: () => {} });
+  const lineGroups = new Map();
   (result.data.words || []).forEach(word => {
     const value = normalizeInputText(word.text || '');
     if(!value) return;
@@ -757,6 +759,32 @@ async function extractTagsWithOcr(imageDataUrl){
         type: match.type,
         confidence: (word.confidence || 0) / 100,
         bbox: { x, y, width, height },
+        source: 'ocr'
+      });
+    });
+
+    const yKey = Math.round(y / 6) * 6;
+    const group = lineGroups.get(yKey) || { items: [], minX: x, maxX: x + width, minY: y, maxY: y + height };
+    group.items.push({ text: value, x, y, width, height });
+    group.minX = Math.min(group.minX, x);
+    group.maxX = Math.max(group.maxX, x + width);
+    group.minY = Math.min(group.minY, y);
+    group.maxY = Math.max(group.maxY, y + height);
+    lineGroups.set(yKey, group);
+  });
+
+  lineGroups.forEach(group => {
+    const sorted = group.items.sort((a, b) => a.x - b.x);
+    const lineText = normalizeInputText(sorted.map(i => i.text).join(' '));
+    const matches = findTagMatches(lineText);
+    if(matches.length === 0) return;
+    const bbox = { x: group.minX, y: group.minY, width: group.maxX - group.minX, height: group.maxY - group.minY };
+    matches.forEach(match => {
+      addDetectedTag({
+        text: match.text,
+        type: match.type,
+        confidence: 0.75,
+        bbox,
         source: 'ocr'
       });
     });
@@ -789,21 +817,48 @@ function distanceToBBox(point, bbox){
   return Math.hypot(point.x - clampedX, point.y - clampedY);
 }
 
+function tagTypePriority(type){
+  if(type === 'Valve') return 0;
+  if(type === 'Equipment') return 1;
+  if(type === 'PSV') return 2;
+  if(type === 'Line') return 3;
+  return 4;
+}
+
+function isPointInPaddedBBox(point, bbox){
+  return (
+    point.x >= bbox.x - TAG_BBOX_PAD &&
+    point.x <= bbox.x + bbox.width + TAG_BBOX_PAD &&
+    point.y >= bbox.y - TAG_BBOX_PAD &&
+    point.y <= bbox.y + bbox.height + TAG_BBOX_PAD
+  );
+}
+
 async function getNearestTagForPoint(point){
   if(!pidImageMeta) return null;
   await ensureTagsExtracted();
   if(detectedTags.length === 0) return null;
   const imagePoint = stageToImagePoint(point.x, point.y);
-  let nearest = null;
+  let best = null;
   let bestDistance = Number.POSITIVE_INFINITY;
+  let bestPriority = Number.POSITIVE_INFINITY;
   detectedTags.forEach(tag => {
     const distance = distanceToBBox(imagePoint, tag.bbox);
-    if(distance < bestDistance){
+    const priority = tagTypePriority(tag.type);
+    const inBox = isPointInPaddedBBox(imagePoint, tag.bbox);
+    if(inBox && distance <= TAG_BBOX_PAD && priority <= bestPriority){
+      best = tag;
+      bestDistance = 0;
+      bestPriority = priority;
+      return;
+    }
+    if(distance < bestDistance || (distance === bestDistance && priority < bestPriority)){
+      best = tag;
       bestDistance = distance;
-      nearest = tag;
+      bestPriority = priority;
     }
   });
-  return bestDistance <= TAG_MATCH_DISTANCE ? nearest : null;
+  return bestDistance <= TAG_MATCH_DISTANCE ? best : null;
 }
 
 /* Upload PID image (pdf or image) */

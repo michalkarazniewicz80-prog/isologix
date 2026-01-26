@@ -602,7 +602,7 @@ const TAG_RULES = [
   { type: 'Line', regex: /\b\d{2,4}-[A-Z]{1,4}-\d{2,4}(?:-\d{1,2})?\b/gi }
 ];
 const GENERIC_TAG_REGEX = /\b(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9-]{4,}\b/gi;
-const TAG_MATCH_DISTANCE = 40;
+const TAG_MATCH_DISTANCE = 80;
 
 function isExcludedTag(text){
   const cleaned = text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
@@ -736,6 +736,16 @@ async function ensureTagsExtracted(){
   }
 }
 
+function distanceToBBox(point, bbox){
+  const left = bbox.x;
+  const right = bbox.x + bbox.width;
+  const top = bbox.y;
+  const bottom = bbox.y + bbox.height;
+  const clampedX = Math.min(Math.max(point.x, left), right);
+  const clampedY = Math.min(Math.max(point.y, top), bottom);
+  return Math.hypot(point.x - clampedX, point.y - clampedY);
+}
+
 async function getNearestTagForPoint(point){
   if(!pidImageMeta) return null;
   await ensureTagsExtracted();
@@ -744,11 +754,7 @@ async function getNearestTagForPoint(point){
   let nearest = null;
   let bestDistance = Number.POSITIVE_INFINITY;
   detectedTags.forEach(tag => {
-    const centerX = tag.bbox.x + tag.bbox.width / 2;
-    const centerY = tag.bbox.y + tag.bbox.height / 2;
-    const dx = imagePoint.x - centerX;
-    const dy = imagePoint.y - centerY;
-    const distance = Math.hypot(dx, dy);
+    const distance = distanceToBBox(imagePoint, tag.bbox);
     if(distance < bestDistance){
       bestDistance = distance;
       nearest = tag;

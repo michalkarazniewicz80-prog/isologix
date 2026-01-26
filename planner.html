@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.5.29/dist/jspdf.plugin.autotable.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.8.162/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
 
 <script>
 /* ========= AUTH INITIALISATION VIA NETLIFY FUNCTION ========= */
@@ -255,7 +256,13 @@ const { jsPDF } = window.jspdf;
 const stage = new Konva.Stage({ container:'container', width:window.innerWidth-24, height:700 });
 const mainLayer = new Konva.Layer(); stage.add(mainLayer);
 
+const PDF_RENDER_SCALE = 2;
 let tool='', activeSymbol='', annotations=[], drawing=false, currentLine=null, currentPts=[], shiftPressed=false, textActive=false, pidImage=null;
+let pidImageMeta = null;
+let currentPidFile = null;
+let currentPidPdfData = null;
+let pidImageDataUrl = null;
+let detectedTags = [];
 const SYMBOLS = { valve: 'symbols/valve.png', flange: 'symbols/flange.png', hose_connection: 'symbols/hose_connection.png' };
 const BASE_PIN_RADIUS = 6, SYMBOL_SCALE = 0.42;
 let loadingImages = 0;
@@ -323,6 +330,39 @@ function updateDeisoTable(){
 
 function escapeHtml(s){ return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'); }
 
+function getNextPinID(){
+  const rows = document.querySelectorAll('#pointsTable tbody tr');
+  if(rows.length===0) return 1;
+  const ids = Array.from(rows).map(r => parseInt(r.children[0].innerText) || 0);
+  return Math.max(...ids)+1;
+}
+
+/* Click-to-add-pin logic (shared by manual + tag extraction) */
+async function addIsolationPinAt(x, y, descriptionText = ''){
+  let finalDescription = descriptionText;
+  if(!finalDescription){
+    const nearestTag = await getNearestTagForPoint({ x, y });
+    if(nearestTag) finalDescription = nearestTag.text;
+  }
+  const color = 'rgba(255,0,0,0.7)';
+  const id = getNextPinID();
+  const c = new Konva.Circle({ x, y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
+  c.setAttr('id', id);
+  const t = new Konva.Text({ x:x+8, y:y-12, text:String(id), fontSize:12, fill:'#111', listening:false });
+  c.on('dragmove', ()=> t.position({ x: c.x()+8, y: c.y()-12 }) );
+  const annoId = genAnnoId();
+  c.setAttr('annoId', annoId);
+  t.setAttr('annoId', annoId);
+  mainLayer.add(c); mainLayer.add(t);
+  annotations.push({ annoId, id, type:'point', shapeType:'circle', attrs: { id, x: c.x(), y: c.y(), radius: BASE_PIN_RADIUS, fill: color, stroke:'#111', strokeWidth:1 } });
+  const row = addPointRow(id, 'point', c);
+  if(finalDescription && row){
+    const descInput = row.querySelector('.p-desc');
+    if(descInput){ descInput.value = finalDescription; updateDeisoTable(); }
+  }
+  mainLayer.batchDraw();
+}
+
 /* ---------------------------
   Tool selection & stage events
    --------------------------- */
@@ -383,18 +423,16 @@ stage.on('mousemove touchmove', e=>{
   mainLayer.batchDraw();
 });
 
-stage.on('click', ()=>{
+stage.on('click', async ()=>{
   const pos = getPointer();
-  function getNextPinID(){
-    const rows = document.querySelectorAll('#pointsTable tbody tr');
-    if(rows.length===0) return 1;
-    const ids = Array.from(rows).map(r => parseInt(r.children[0].innerText) || 0);
-    return Math.max(...ids)+1;
-  }
   if(activeSymbol){ insertSymbol(activeSymbol,pos.x,pos.y); activeSymbol=''; document.getElementById('symbolSelect').value=''; return; }
   if(tool==='text' && !textActive){ addTextAnnotation(pos.x,pos.y); textActive=true; return; }
   if(tool==='point' || tool==='vent' || tool==='spade'){
-    const color = tool==='point' ? 'rgba(255,0,0,0.7)' : tool==='vent' ? 'rgba(0,200,0,0.7)' : 'rgba(0,0,255,0.7)';
+    if(tool === 'point'){
+      await addIsolationPinAt(pos.x, pos.y);
+      return;
+    }
+    const color = tool==='vent' ? 'rgba(0,200,0,0.7)' : 'rgba(0,0,255,0.7)';
     const id = getNextPinID();
     const c = new Konva.Circle({ x:pos.x, y:pos.y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
     c.setAttr('id', id);
@@ -492,6 +530,7 @@ function addPointRow(id,type,circle){
   isoSelect.addEventListener('change', updateDeisoTable);
   tbody.appendChild(tr);
   updateDeisoTable();
+  return tr;
 }
 
 /* Pulse helpers */
@@ -551,22 +590,204 @@ function insertSymbol(name,x,y){
   img.src = path;
 }
 
+/* ---------------------------
+  Tag extraction helpers
+   --------------------------- */
+const TAG_EXCLUDE = new Set(['NOTE','NOTES','TYP','TYPICAL','SPEC','SPECS','NORMALLY','NORMAL','SCALE','DETAIL','REV','REFERENCE','GENERAL']);
+/* Tag classification using regex rules */
+const TAG_RULES = [
+  { type: 'Valve', regex: /\b(?:XV|HV|PV|LV|SV|SDV|ESDV|MOV|AOV)[ -]?\d+[A-Z]?\b/gi },
+  { type: 'Equipment', regex: /\b(?:P|C|E|V|TK|D|HX)[ -]?\d+[A-Z]?\b/gi },
+  { type: 'PSV', regex: /\bPSV[ -]?\d+[A-Z]?\b/gi },
+  { type: 'Line', regex: /\b\d{2,4}-[A-Z]{1,4}-\d{2,4}(?:-\d{1,2})?\b/gi }
+];
+const GENERIC_TAG_REGEX = /\b(?=[A-Z0-9-]*[A-Z])(?=[A-Z0-9-]*\d)[A-Z0-9-]{4,}\b/gi;
+const TAG_MATCH_DISTANCE = 40;
+
+function isExcludedTag(text){
+  const cleaned = text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  return TAG_EXCLUDE.has(cleaned);
+}
+
+function findTagMatches(text){
+  const matches = [];
+  if(!text) return matches;
+  const seen = new Set();
+  TAG_RULES.forEach(rule => {
+    const re = new RegExp(rule.regex.source, 'gi');
+    for(const match of text.matchAll(re)){
+      const value = match[0].trim();
+      if(!value || isExcludedTag(value)) continue;
+      const key = value.toUpperCase();
+      if(!seen.has(key)){
+        seen.add(key);
+        matches.push({ text: value, type: rule.type });
+      }
+    }
+  });
+  if(matches.length === 0){
+    for(const match of text.matchAll(GENERIC_TAG_REGEX)){
+      const value = match[0].trim();
+      if(!value || isExcludedTag(value)) continue;
+      const key = value.toUpperCase();
+      if(!seen.has(key)){
+        seen.add(key);
+        matches.push({ text: value, type: 'Generic' });
+      }
+    }
+  }
+  return matches;
+}
+
+/* Coordinate transforms: map image-space bbox -> Konva stage-space */
+function imageToStagePoint(x, y){
+  if(!pidImage || !pidImageMeta) return { x, y };
+  const scaleX = pidImage.width() / pidImageMeta.width;
+  const scaleY = pidImage.height() / pidImageMeta.height;
+  return { x: pidImage.x() + x * scaleX, y: pidImage.y() + y * scaleY };
+}
+
+function stageToImagePoint(x, y){
+  if(!pidImage || !pidImageMeta) return { x, y };
+  const scaleX = pidImage.width() / pidImageMeta.width;
+  const scaleY = pidImage.height() / pidImageMeta.height;
+  return { x: (x - pidImage.x()) / scaleX, y: (y - pidImage.y()) / scaleY };
+}
+
+function clearDetectedTags(){
+  detectedTags = [];
+}
+
+function addDetectedTag(tag){
+  const key = `${tag.text.toUpperCase()}|${Math.round(tag.bbox.x)}|${Math.round(tag.bbox.y)}`;
+  if(detectedTags.some(t => `${t.text.toUpperCase()}|${Math.round(t.bbox.x)}|${Math.round(t.bbox.y)}` === key)) return;
+  detectedTags.push(tag);
+}
+
+/* Text extraction logic: pdf.js textContent for vector PDFs, OCR for raster PDFs/images */
+async function extractTagsFromPdfText(arrayBuffer){
+  const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdfDoc.getPage(1);
+  const viewport = page.getViewport({ scale: PDF_RENDER_SCALE });
+  const textContent = await page.getTextContent();
+  const items = textContent.items.filter(item => item.str && item.str.trim());
+  const hasText = items.length > 0;
+  if(!hasText) return { tags: [], hasText: false };
+
+  items.forEach(item => {
+    const matches = findTagMatches(item.str);
+    if(matches.length === 0) return;
+    const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+    const x = tx[4];
+    const y = tx[5] - (item.height * viewport.scale);
+    const width = item.width * viewport.scale;
+    const height = item.height * viewport.scale;
+    matches.forEach(match => {
+      addDetectedTag({
+        text: match.text,
+        type: match.type,
+        confidence: 0.95,
+        bbox: { x, y, width, height },
+        source: 'pdfText'
+      });
+    });
+  });
+
+  return { tags: detectedTags, hasText: true };
+}
+
+async function extractTagsWithOcr(imageDataUrl){
+  if(!window.Tesseract) throw new Error('Tesseract.js not available');
+  const result = await Tesseract.recognize(imageDataUrl, 'eng', { logger: () => {} });
+  (result.data.words || []).forEach(word => {
+    const value = (word.text || '').trim();
+    if(!value) return;
+    const matches = findTagMatches(value);
+    if(matches.length === 0) return;
+    const x = word.bbox.x0;
+    const y = word.bbox.y0;
+    const width = word.bbox.x1 - word.bbox.x0;
+    const height = word.bbox.y1 - word.bbox.y0;
+    matches.forEach(match => {
+      addDetectedTag({
+        text: match.text,
+        type: match.type,
+        confidence: (word.confidence || 0) / 100,
+        bbox: { x, y, width, height },
+        source: 'ocr'
+      });
+    });
+  });
+}
+
+async function ensureTagsExtracted(){
+  if(detectedTags.length > 0) return;
+  if(!pidImage || !currentPidFile){
+    return;
+  }
+  clearDetectedTags();
+  if(currentPidFile.type === 'application/pdf' && currentPidPdfData){
+    const { hasText } = await extractTagsFromPdfText(currentPidPdfData);
+    if(!hasText && pidImageDataUrl){
+      await extractTagsWithOcr(pidImageDataUrl);
+    }
+  } else if(pidImageDataUrl){
+    await extractTagsWithOcr(pidImageDataUrl);
+  }
+}
+
+async function getNearestTagForPoint(point){
+  if(!pidImageMeta) return null;
+  await ensureTagsExtracted();
+  if(detectedTags.length === 0) return null;
+  const imagePoint = stageToImagePoint(point.x, point.y);
+  let nearest = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  detectedTags.forEach(tag => {
+    const centerX = tag.bbox.x + tag.bbox.width / 2;
+    const centerY = tag.bbox.y + tag.bbox.height / 2;
+    const dx = imagePoint.x - centerX;
+    const dy = imagePoint.y - centerY;
+    const distance = Math.hypot(dx, dy);
+    if(distance < bestDistance){
+      bestDistance = distance;
+      nearest = tag;
+    }
+  });
+  return bestDistance <= TAG_MATCH_DISTANCE ? nearest : null;
+}
+
 /* Upload PID image (pdf or image) */
 document.getElementById('upload').addEventListener('change', async (ev)=>{
   const f = ev.target.files[0]; if(!f) return;
+  currentPidFile = f;
+  currentPidPdfData = null;
+  pidImageDataUrl = null;
+  pidImageMeta = null;
+  clearDetectedTags();
   const ext = f.name.split('.').pop().toLowerCase();
   if(pidImage){ pidImage.destroy(); pidImage = null; mainLayer.batchDraw(); }
   if(ext === 'pdf'){
     startLoad();
     try{
       const ab = await f.arrayBuffer();
+      currentPidPdfData = ab;
       const pdfDoc = await pdfjsLib.getDocument({ data:ab }).promise;
       const page = await pdfDoc.getPage(1);
-      const vp = page.getViewport({ scale: 2 });
+      const vp = page.getViewport({ scale: PDF_RENDER_SCALE });
       const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
       await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
       const img = new Image();
-      img.onload = ()=>{ endLoad(); const fit = fitImageToStage(img.width,img.height); pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height }); mainLayer.add(pidImage); pidImage.moveToBottom(); mainLayer.batchDraw(); };
+      img.onload = ()=>{
+        endLoad();
+        const fit = fitImageToStage(img.width,img.height);
+        pidImageMeta = { width: img.width, height: img.height };
+        pidImageDataUrl = cv.toDataURL('image/png');
+        pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height });
+        mainLayer.add(pidImage);
+        pidImage.moveToBottom();
+        mainLayer.batchDraw();
+      };
       img.onerror = ()=>{ endLoad(); alert('Failed to render PDF page'); };
       img.src = cv.toDataURL('image/png');
     } catch(err){ endLoad(); console.error(err); alert('Failed to load PDF'); }
@@ -577,7 +798,16 @@ document.getElementById('upload').addEventListener('change', async (ev)=>{
   const reader = new FileReader();
   reader.onload = ()=>{
     const img = new Image();
-    img.onload = ()=>{ endLoad(); const fit = fitImageToStage(img.width,img.height); pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height }); mainLayer.add(pidImage); pidImage.moveToBottom(); mainLayer.batchDraw(); };
+    img.onload = ()=>{
+      endLoad();
+      const fit = fitImageToStage(img.width,img.height);
+      pidImageMeta = { width: img.width, height: img.height };
+      pidImageDataUrl = reader.result;
+      pidImage = new Konva.Image({ image: img, x:0, y:0, width: fit.width, height: fit.height });
+      mainLayer.add(pidImage);
+      pidImage.moveToBottom();
+      mainLayer.batchDraw();
+    };
     img.onerror = ()=>{ endLoad(); alert('Failed to load image'); };
     img.src = reader.result;
   };
@@ -586,7 +816,18 @@ document.getElementById('upload').addEventListener('change', async (ev)=>{
 
 /* Buttons: reset, undo, new project */
 document.getElementById('reset').addEventListener('click', ()=>{ if(!confirm('Clear diagram and tables?')) return; annotations.forEach(a=>{}); // destroy shapes
-  mainLayer.destroyChildren(); annotations=[]; document.querySelector('#pointsTable tbody').innerHTML=''; document.querySelector('#deisoTable tbody').innerHTML=''; pidImage=null; stage.add(mainLayer); mainLayer.batchDraw();
+  mainLayer.destroyChildren();
+  annotations=[];
+  document.querySelector('#pointsTable tbody').innerHTML='';
+  document.querySelector('#deisoTable tbody').innerHTML='';
+  pidImage=null;
+  pidImageMeta=null;
+  currentPidFile=null;
+  currentPidPdfData=null;
+  pidImageDataUrl=null;
+  detectedTags=[];
+  stage.add(mainLayer);
+  stage.batchDraw();
 });
 document.getElementById('undo').addEventListener('click', ()=>{
   const last = annotations.pop();
@@ -869,6 +1110,11 @@ function loadDraftData(saved) {
   mainLayer.destroyChildren();
   annotations = [];
   pidImage = null;
+  pidImageMeta = null;
+  currentPidFile = null;
+  currentPidPdfData = null;
+  pidImageDataUrl = null;
+  detectedTags = [];
 
   // -----------------------
   // Restore PID image
@@ -886,6 +1132,7 @@ function loadDraftData(saved) {
         width: saved.pid.width || fit.width,
         height: saved.pid.height || fit.height
       });
+      pidImageMeta = { width: saved.pid.width || img.width, height: saved.pid.height || img.height };
       mainLayer.add(pidImage);
       pidImage.moveToBottom();
       mainLayer.batchDraw();

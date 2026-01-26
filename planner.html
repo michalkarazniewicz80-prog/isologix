@@ -260,6 +260,7 @@ const PDF_RENDER_SCALE = 2;
 let tool='', activeSymbol='', annotations=[], drawing=false, currentLine=null, currentPts=[], shiftPressed=false, textActive=false, pidImage=null;
 let pidImageMeta = null;
 let currentPidFile = null;
+let currentPidExt = '';
 let currentPidPdfData = null;
 let pidImageDataUrl = null;
 let detectedTags = [];
@@ -662,9 +663,9 @@ async function extractTagsFromPdfText(arrayBuffer){
     if(matches.length === 0) return;
     const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
     const x = tx[4];
-    const y = tx[5] - (item.height * viewport.scale);
-    const width = item.width * viewport.scale;
-    const height = item.height * viewport.scale;
+    const height = Math.abs(tx[3]) || (item.height * viewport.scale);
+    const width = Math.abs(item.width * viewport.scale);
+    const y = tx[5] - height;
     matches.forEach(match => {
       addDetectedTag({
         text: match.text,
@@ -709,7 +710,7 @@ async function ensureTagsExtracted(){
     return;
   }
   clearDetectedTags();
-  if(currentPidFile.type === 'application/pdf' && currentPidPdfData){
+  if((currentPidFile.type === 'application/pdf' || currentPidExt === 'pdf') && currentPidPdfData){
     const { hasText } = await extractTagsFromPdfText(currentPidPdfData);
     if(!hasText && pidImageDataUrl){
       await extractTagsWithOcr(pidImageDataUrl);
@@ -750,11 +751,12 @@ async function getNearestTagForPoint(point){
 document.getElementById('upload').addEventListener('change', async (ev)=>{
   const f = ev.target.files[0]; if(!f) return;
   currentPidFile = f;
+  currentPidExt = f.name.split('.').pop().toLowerCase();
   currentPidPdfData = null;
   pidImageDataUrl = null;
   pidImageMeta = null;
   clearDetectedTags();
-  const ext = f.name.split('.').pop().toLowerCase();
+  const ext = currentPidExt;
   if(pidImage){ pidImage.destroy(); pidImage = null; mainLayer.batchDraw(); }
   if(ext === 'pdf'){
     startLoad();

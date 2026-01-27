@@ -360,6 +360,7 @@ function buildDrawingState(){
         });
         break;
       case 'Text':
+        if (node.getAttr('isPinLabel')) return;
         anno.push({
           shapeType: 'text',
           attrs: { x: node.x(), y: node.y(), text: node.text(), fontSize: node.fontSize(), fill: node.fill(), annoId: node.getAttr('annoId') },
@@ -422,6 +423,13 @@ function updateDrawingThumbnail(index){
 }
 
 function restoreAnnotations(savedAnnotations){
+  const circleIds = new Set(
+    (savedAnnotations || [])
+      .filter(entry => entry.shapeType === 'circle')
+      .map(entry => entry.attrs?.id)
+      .filter(Boolean)
+      .map(val => String(val))
+  );
   (savedAnnotations || []).forEach(a => {
     try {
       let node, idText;
@@ -434,7 +442,8 @@ function restoreAnnotations(savedAnnotations){
             fill: a.attrs.fill || 'rgba(255,0,0,0.7)',
             stroke: a.attrs.stroke || '#111',
             strokeWidth: a.attrs.strokeWidth || 1,
-            draggable: true
+            draggable: true,
+            id: a.attrs.id
           });
           idText = new Konva.Text({
             x: (a.attrs.x || 0) + 8,
@@ -444,6 +453,10 @@ function restoreAnnotations(savedAnnotations){
             fill: '#111',
             listening: false
           });
+          idText.setAttr('isPinLabel', true);
+          const syncLabel = () => idText.position({ x: node.x() + 8, y: node.y() - 12 });
+          node.on('dragmove', syncLabel);
+          node.on('dragend', syncLabel);
           const annoId = a.attrs.annoId || genAnnoId();
           node.setAttr('annoId', annoId);
           idText.setAttr('annoId', annoId);
@@ -490,6 +503,7 @@ function restoreAnnotations(savedAnnotations){
           annotations.push({ annoId: lineId, shapeType: 'line', points: a.points || a.attrs.points || [], attrs: a.attrs });
           break;
         case 'text':
+          if (circleIds.has(String(a.attrs?.text ?? ''))) return;
           node = new Konva.Text(a.attrs);
           if (a.meta) node.meta = a.meta;
           mainLayer.add(node);
@@ -773,6 +787,7 @@ stage.on('click', ()=>{
     const c = new Konva.Circle({ x:pos.x, y:pos.y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
     c.setAttr('id', id);
     const t = new Konva.Text({ x:pos.x+8, y:pos.y-12, text:String(id), fontSize:12, fill:'#111', listening:false });
+    t.setAttr('isPinLabel', true);
     c.on('dragmove', ()=> t.position({ x: c.x()+8, y: c.y()-12 }) );
     // annotate with stable id
     const annoId = genAnnoId();
@@ -829,6 +844,9 @@ function addPointRow(id,type,circle){
   const tbody = document.querySelector('#pointsTable tbody');
   const tr = document.createElement('tr');
   tr.dataset.id = id; tr.dataset.tool = type;
+  if (circle?.getAttr) {
+    tr.dataset.annoId = circle.getAttr('annoId') || '';
+  }
   const preCat = defaultCategoryForTool(type);
   const defaultIso = defaultIsoState(type);
   let isoOptions = '';
@@ -855,18 +873,56 @@ function addPointRow(id,type,circle){
     <td><select class="p-iso">${isoOptions}</select></td>
   `;
   const descInput = tr.querySelector('.p-desc'), catSelect = tr.querySelector('.p-cat'), isoSelect = tr.querySelector('.p-iso');
-  const startHandler = ()=> startPulse(circle), stopHandler = ()=> stopPulse(circle);
-  [descInput, catSelect, isoSelect].forEach(el => {
-    el.addEventListener('focus', startHandler);
-    el.addEventListener('blur', stopHandler);
-    el.addEventListener('keydown', e => { if(e.key==='Enter'){ stopPulse(circle); el.blur(); } });
-  });
   descInput.addEventListener('input', updateDeisoTable);
   catSelect.addEventListener('change', updateDeisoTable);
   isoSelect.addEventListener('change', updateDeisoTable);
   tbody.appendChild(tr);
   updateDeisoTable();
 }
+
+function findCircleByRow(row){
+  if (!row) return null;
+  const rowAnnoId = row.dataset.annoId;
+  if (rowAnnoId) {
+    const match = mainLayer.find(node => node.className === 'Circle' && String(node.getAttr('annoId')) === String(rowAnnoId));
+    if (match[0]) return match[0];
+  }
+  const rowId = row.dataset.id;
+  if (!rowId) return null;
+  const match = mainLayer.find(node => node.className === 'Circle' && String(node.getAttr('id')) === String(rowId));
+  return match[0] || null;
+}
+
+const pointsTableBody = document.querySelector('#pointsTable tbody');
+pointsTableBody?.addEventListener('focusin', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (!target.closest('input, select')) return;
+  const row = target.closest('tr');
+  const circle = findCircleByRow(row);
+  startPulse(circle);
+});
+
+pointsTableBody?.addEventListener('focusout', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (!target.closest('input, select')) return;
+  const row = target.closest('tr');
+  const circle = findCircleByRow(row);
+  stopPulse(circle);
+});
+
+pointsTableBody?.addEventListener('keydown', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (event.key !== 'Enter') return;
+  const row = target.closest('tr');
+  const circle = findCircleByRow(row);
+  stopPulse(circle);
+  if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) {
+    target.blur();
+  }
+});
 
 document.querySelector('#deisoTable tbody').addEventListener('click', (event) => {
   const target = event.target;

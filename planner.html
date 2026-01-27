@@ -444,6 +444,9 @@ function restoreAnnotations(savedAnnotations){
             fill: '#111',
             listening: false
           });
+          const syncLabel = () => idText.position({ x: node.x() + 8, y: node.y() - 12 });
+          node.on('dragmove', syncLabel);
+          node.on('dragend', syncLabel);
           const annoId = a.attrs.annoId || genAnnoId();
           node.setAttr('annoId', annoId);
           idText.setAttr('annoId', annoId);
@@ -829,6 +832,9 @@ function addPointRow(id,type,circle){
   const tbody = document.querySelector('#pointsTable tbody');
   const tr = document.createElement('tr');
   tr.dataset.id = id; tr.dataset.tool = type;
+  if (circle?.getAttr) {
+    tr.dataset.annoId = circle.getAttr('annoId') || '';
+  }
   const preCat = defaultCategoryForTool(type);
   const defaultIso = defaultIsoState(type);
   let isoOptions = '';
@@ -855,18 +861,51 @@ function addPointRow(id,type,circle){
     <td><select class="p-iso">${isoOptions}</select></td>
   `;
   const descInput = tr.querySelector('.p-desc'), catSelect = tr.querySelector('.p-cat'), isoSelect = tr.querySelector('.p-iso');
-  const startHandler = ()=> startPulse(circle), stopHandler = ()=> stopPulse(circle);
-  [descInput, catSelect, isoSelect].forEach(el => {
-    el.addEventListener('focus', startHandler);
-    el.addEventListener('blur', stopHandler);
-    el.addEventListener('keydown', e => { if(e.key==='Enter'){ stopPulse(circle); el.blur(); } });
-  });
   descInput.addEventListener('input', updateDeisoTable);
   catSelect.addEventListener('change', updateDeisoTable);
   isoSelect.addEventListener('change', updateDeisoTable);
   tbody.appendChild(tr);
   updateDeisoTable();
 }
+
+function findCircleByRow(row){
+  if (!row) return null;
+  const rowId = row.dataset.id;
+  if (!rowId) return null;
+  const match = mainLayer.find(node => node.className === 'Circle' && String(node.getAttr('id')) === String(rowId));
+  return match[0] || null;
+}
+
+const pointsTableBody = document.querySelector('#pointsTable tbody');
+pointsTableBody?.addEventListener('focusin', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (!target.closest('input, select')) return;
+  const row = target.closest('tr');
+  const circle = findCircleByRow(row);
+  startPulse(circle);
+});
+
+pointsTableBody?.addEventListener('focusout', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (!target.closest('input, select')) return;
+  const row = target.closest('tr');
+  const circle = findCircleByRow(row);
+  stopPulse(circle);
+});
+
+pointsTableBody?.addEventListener('keydown', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (event.key !== 'Enter') return;
+  const row = target.closest('tr');
+  const circle = findCircleByRow(row);
+  stopPulse(circle);
+  if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) {
+    target.blur();
+  }
+});
 
 document.querySelector('#deisoTable tbody').addEventListener('click', (event) => {
   const target = event.target;

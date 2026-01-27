@@ -378,6 +378,23 @@ function buildDrawingState(){
     }
   });
 
+  const knownGroupIds = new Set(
+    anno
+      .filter(entry => entry.shapeType === 'group')
+      .map(entry => entry.attrs?.annoId)
+      .filter(Boolean)
+  );
+  (annotations || [])
+    .filter(entry => entry.shapeType === 'group')
+    .forEach(entry => {
+      if (entry.annoId && knownGroupIds.has(entry.annoId)) return;
+      anno.push({
+        shapeType: 'group',
+        attrs: { ...(entry.attrs || {}), annoId: entry.annoId },
+        meta: entry.meta || {}
+      });
+    });
+
   return { pid, annotations: anno };
 }
 
@@ -896,7 +913,7 @@ function addTextAnnotation(x,y){
   });
   group.on('dragstart', ()=>group.moveToTop());
   group.on('dragend', ()=>updateAnnotation(annoId, { x: group.x(), y: group.y() }));
-  annotations.push({ annoId, type:'text', shapeType:'group', attrs:{ x:group.x(), y:group.y(), text: text.text() } });
+  annotations.push({ annoId, type:'text', shapeType:'group', attrs:{ x:group.x(), y:group.y(), text: text.text(), annoId } });
 }
 
 /* Symbols */

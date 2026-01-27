@@ -335,7 +335,6 @@ function restoreAnnotations(savedAnnotations){
           mainLayer.add(idText);
           annotations.push({ annoId, id: a.attrs.id || null, shapeType: 'circle', attrs: a.attrs });
           break;
-        case 'image':
           if (a.src) {
             startLoad();
             const imgObj = new Image();

@@ -444,9 +444,11 @@ function restoreAnnotations(savedAnnotations){
             fill: '#111',
             listening: false
           });
+          idText.setAttr('labelFor', String(a.attrs.id || ''));
           const annoId = a.attrs.annoId || genAnnoId();
           node.setAttr('annoId', annoId);
           idText.setAttr('annoId', annoId);
+          node.on('dragmove', () => idText.position({ x: node.x() + 8, y: node.y() - 12 }));
           mainLayer.add(node);
           mainLayer.add(idText);
           annotations.push({ annoId, id: a.attrs.id || null, shapeType: 'circle', attrs: a.attrs });
@@ -773,6 +775,7 @@ stage.on('click', ()=>{
     const c = new Konva.Circle({ x:pos.x, y:pos.y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
     c.setAttr('id', id);
     const t = new Konva.Text({ x:pos.x+8, y:pos.y-12, text:String(id), fontSize:12, fill:'#111', listening:false });
+    t.setAttr('labelFor', String(id));
     c.on('dragmove', ()=> t.position({ x: c.x()+8, y: c.y()-12 }) );
     // annotate with stable id
     const annoId = genAnnoId();
@@ -855,18 +858,38 @@ function addPointRow(id,type,circle){
     <td><select class="p-iso">${isoOptions}</select></td>
   `;
   const descInput = tr.querySelector('.p-desc'), catSelect = tr.querySelector('.p-cat'), isoSelect = tr.querySelector('.p-iso');
-  const startHandler = ()=> startPulse(circle), stopHandler = ()=> stopPulse(circle);
-  [descInput, catSelect, isoSelect].forEach(el => {
-    el.addEventListener('focus', startHandler);
-    el.addEventListener('blur', stopHandler);
-    el.addEventListener('keydown', e => { if(e.key==='Enter'){ stopPulse(circle); el.blur(); } });
-  });
   descInput.addEventListener('input', updateDeisoTable);
   catSelect.addEventListener('change', updateDeisoTable);
   isoSelect.addEventListener('change', updateDeisoTable);
   tbody.appendChild(tr);
   updateDeisoTable();
 }
+
+function getCircleForRow(row){
+  if (!row) return null;
+  const id = row.dataset.id;
+  if (!id) return null;
+  return mainLayer.findOne(node => node.className === 'Circle' && String(node.getAttr('id')) === String(id));
+}
+
+const pointsTbody = document.querySelector('#pointsTable tbody');
+pointsTbody.addEventListener('focusin', (event) => {
+  const row = event.target?.closest('tr');
+  const circle = getCircleForRow(row);
+  if (circle) startPulse(circle);
+});
+pointsTbody.addEventListener('focusout', (event) => {
+  const row = event.target?.closest('tr');
+  const circle = getCircleForRow(row);
+  if (circle) stopPulse(circle);
+});
+pointsTbody.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  const row = event.target?.closest('tr');
+  const circle = getCircleForRow(row);
+  if (circle) stopPulse(circle);
+  event.target.blur();
+});
 
 document.querySelector('#deisoTable tbody').addEventListener('click', (event) => {
   const target = event.target;

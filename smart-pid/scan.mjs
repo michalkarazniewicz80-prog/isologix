@@ -70,9 +70,10 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
         box: { left: candidate.box.left * sx, right: candidate.box.right * sx,
           top: candidate.box.top * sy, bottom: candidate.box.bottom * sy }
       }));
-    const cachedOcr = needsOcr && textCache.width === width && textCache.height === height;
+    const cachedOcr = textCache.width === width && textCache.height === height;
     const text = cachedOcr ? textCache.text.slice() : (native?.text || []).map(item => ({ ...item, position: scalePoint(item.position), size: item.size * sx }));
     const readTile = tile => pdf ? pdfTile(pdf.page, viewport, tile) : imageTile(image, tile);
+    let usedOcr = cachedOcr || needsOcr;
     let method = 'vector';
     const failOcr = async error => {
       ocrFailed = true;
@@ -83,6 +84,7 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
     };
     const ensureOcr = async () => {
       if (ocr || ocrFailed) return;
+      usedOcr = true;
       onProgress('Loading local OCR…');
       try { ocr = await openOcr(); }
       catch (error) { await failOcr(error); }
@@ -117,14 +119,17 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
         }
       }
     }
-    if (needsOcr && !ocrFailed) {
+    if (!ocrFailed) {
       // Full tiles find references and rotated text. Re-read small neighborhoods
       // when thin CAD lettering gets lost among the drawing strokes.
       const symbols = suppressDuplicates(candidates).kept.filter(candidate => candidate.classification === 'valve');
       const lookedAt = new Set(cachedOcr ? textCache.lookedAt : []);
+      const missingTags = () => associateTags(symbols, tagObservations(text, formats))
+        .filter(symbol => needsOcr ? !symbol.tag : symbol.association.status === 'unmatched');
+      const initialTargets = missingTags();
       const regions = (native?.textRegions || []).map(region => ({ ...scalePoint(region), radius: region.radius * sx }));
       for (const [index, region] of regions.entries()) {
-        const nearby = symbols.some(symbol => {
+        const nearby = initialTargets.some(symbol => {
           const span = Math.max(symbol.box.right - symbol.box.left, symbol.box.bottom - symbol.box.top);
           const gap = Math.hypot(region.x - symbol.position.x, region.y - symbol.position.y);
           return gap >= region.radius * 0.7 && gap < Math.max(span * 2.6, region.radius * 2.6);
@@ -152,7 +157,7 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
           lookedAt.add(key);
         } catch (error) { await failOcr(error); break; }
       }
-      const targets = associateTags(symbols, tagObservations(text, formats)).filter(symbol => !symbol.tag);
+      const targets = missingTags();
       for (const [i, symbol] of targets.entries()) {
         const key = `${Math.round(symbol.position.x / 16)},${Math.round(symbol.position.y / 16)}`;
         if (lookedAt.has(key)) continue;
@@ -174,10 +179,10 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
           lookedAt.add(key);
         } catch (error) { await failOcr(error); break; }
       }
-      if (!ocrFailed) Object.assign(textCache, { width, height, text, lookedAt });
+      if (usedOcr && !ocrFailed) Object.assign(textCache, { width, height, text, lookedAt });
     }
     const result = detectionResult(candidates, width, height, method, text, settings.formats, diagnostic);
-    result.textMethod = needsOcr ? ocrFailed ? 'ocr-incomplete' : 'ocr' : 'native';
+    result.textMethod = ocrFailed ? 'ocr-incomplete' : usedOcr ? needsOcr ? 'ocr' : 'mixed' : 'native';
     return result;
   } finally {
     worker?.terminate();

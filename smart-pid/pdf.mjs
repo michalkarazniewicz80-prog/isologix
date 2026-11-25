@@ -103,6 +103,6 @@ export async function detectPdf(page, ops) {
   const observations = text.status === 'fulfilled' ? extractText(text.value.items, viewport) : [];
   return {
     candidates: vectorCandidates(paths, width, height), text: observations,
-    textRegions: observations.length ? [] : circularTextRegions(paths, width, height), width, height
+    textRegions: circularTextRegions(paths, width, height), width, height
   };
 }

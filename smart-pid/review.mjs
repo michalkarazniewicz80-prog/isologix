@@ -66,8 +66,9 @@ export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSourc
 
     list.replaceChildren(new Option('Select a symbol', ''));
     for (const item of items) {
-      const tag = item.tag?.value || 'Tag unassigned';
-      list.add(new Option(`${label(item)} · ${tag} · ${item.review} · Detection ${item.id}`, item.id));
+      const tag = item.tag?.value ||
+        (item.association?.options?.length ? 'Tag needs review' : 'No tag read');
+      list.add(new Option(`${label(item)} · ${tag} · ${item.review}`, item.id));
     }
     list.disabled = !items.length;
     list.value = component?.id || '';

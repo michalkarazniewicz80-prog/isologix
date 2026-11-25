@@ -84,3 +84,14 @@ test('drawing-specific samples find the same shape rotated and scaled', () => {
   const found = calibratedCandidates(image, templates);
   assert.ok(found.some(hit => hit.orientation === 90 && Math.hypot(hit.position.x - 80, hit.position.y - 60) <= 2));
 });
+
+test('conflicting OCR digits at the same printed tag require review', () => {
+  const tags = tagObservations([
+    text('PV602', 30, 42, 0.99), text('PV620', 31, 43, 0.74)
+  ], valveFormats());
+  const [valve] = associateTags([symbol(30, 30)], tags);
+  assert.equal(valve.tag, null);
+  assert.equal(valve.association.status, 'ambiguous');
+  assert.deepEqual(valve.association.options.map(option => option.value), ['PV602', 'PV620']);
+  assert.ok(valve.association.options.every(option => option.conflictingReading));
+});

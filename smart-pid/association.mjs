@@ -56,6 +56,19 @@ export function tagObservations(text, formats) {
     if (!duplicate) tags.push({ ...observation, value, classification });
     else if (observation.quality > duplicate.quality) Object.assign(duplicate, observation, { value, classification });
   }
+  // Overlapping OCR passes can read different digits at the same printed label.
+  // An OCR confidence difference alone cannot resolve that disagreement.
+  for (const [i, tag] of tags.entries()) {
+    if (tag.source !== 'ocr') continue;
+    for (let j = i + 1; j < tags.length; j++) {
+      const other = tags[j];
+      if (other.source !== 'ocr' || other.classification !== tag.classification || other.value === tag.value) continue;
+      const gap = Math.hypot(tag.position.x - other.position.x, tag.position.y - other.position.y);
+      if (gap > Math.max(3, Math.min(tag.size, other.size) * 0.7)) continue;
+      tag.conflictingReading = true;
+      other.conflictingReading = true;
+    }
+  }
   return tags;
 }
 
@@ -93,11 +106,11 @@ export function associateTags(symbols, tags) {
     const tag = tags[top.j];
     const competing = byTag[top.j];
     const contested = competing[0].i !== i || (competing[1] && top.score - competing[1].score < 0.13);
-    const ambiguous = contested || (edges[1] && top.score - edges[1].score < 0.13);
+    const ambiguous = tag.conflictingReading || contested || (edges[1] && top.score - edges[1].score < 0.13);
     const repeated = occurrences.get(tag.value) > 1;
     const options = edges.slice(0, 5).map(({ j, score }) => ({
       value: tags[j].value, position: tags[j].position, confidence: Math.round(score * 100) / 100,
-      source: tags[j].source, repeated: occurrences.get(tags[j].value) > 1
+      source: tags[j].source, conflictingReading: Boolean(tags[j].conflictingReading), repeated: occurrences.get(tags[j].value) > 1
     }));
     // Mutual clear winners implement a one-to-one assignment with abstention.
     const assigned = !repeated && !ambiguous && top.score >= 0.58;

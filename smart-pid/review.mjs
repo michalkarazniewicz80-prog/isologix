@@ -66,8 +66,8 @@ export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSourc
 
     list.replaceChildren(new Option('Select a symbol', ''));
     for (const item of items) {
-      const tag = item.tag?.value ? ' · ' + item.tag.value : '';
-      list.add(new Option(`${item.id} · ${label(item)}${tag} · ${item.review}`, item.id));
+      const tag = item.tag?.value || 'Tag unassigned';
+      list.add(new Option(`${label(item)} · ${tag} · ${item.review} · Detection ${item.id}`, item.id));
     }
     list.disabled = !items.length;
     list.value = component?.id || '';
@@ -82,7 +82,7 @@ export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSourc
         (component.association?.status ? ` · Tag ${component.association.status}` : '');
       tagOptions.replaceChildren(new Option('Choose an observed tag', ''));
       for (const [index, option] of (component.association?.options || []).entries()) {
-        tagOptions.add(new Option(`${option.value} · ${option.source} · ${Math.round(option.confidence * 100)}%${option.repeated ? ' · repeated' : ''}`, String(index)));
+        tagOptions.add(new Option(`${option.value} · ${option.source} · ${Math.round(option.confidence * 100)}%${option.repeated ? ' · repeated' : ''}${option.conflictingReading ? ' · conflicting OCR' : ''}`, String(index)));
       }
       tagOptions.disabled = tagOptions.options.length === 1;
       confirm.disabled = component.review === 'confirmed';

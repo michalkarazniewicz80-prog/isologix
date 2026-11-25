@@ -26,7 +26,10 @@ function tagClass(value, formats) {
   // Parse the whole observation. A token embedded in a pipe code or dimension
   // must never produce a partial match.
   if (/^(?:P|PU|PMP)[- ]?\d{2,6}[A-Z]?$/.test(value)) return 'pump';
-  if (/^(?:V|TK|T|DR|VES)[- ]?\d{2,6}[A-Z]?$/.test(value)) return 'vessel';
+  // V is used for both numbered valves and vessels. Let nearby geometry
+  // distinguish them, with the usual one-to-one and ambiguity checks.
+  if (/^V[- ]?\d{1,6}[A-Z]?$/.test(value)) return 'valve-or-vessel';
+  if (/^(?:TK|T|DR|VES)[- ]?\d{2,6}[A-Z]?$/.test(value)) return 'vessel';
   if (defaultFormats.some(format => format.test(value))) return 'valve';
   if (!/^[FPLT]CV/.test(value) && /^[FPLTA][ITGSC][A-Z]?[- ]?\d{2,6}[A-Z]?$/.test(value)) return 'instrument';
   if (formats.some(format => format.test(value))) return 'valve';
@@ -90,7 +93,9 @@ export function associateTags(symbols, tags) {
     const { box } = symbol;
     const span = Math.max(box.right - box.left, box.bottom - box.top);
     for (const [j, tag] of tags.entries()) {
-      if (symbol.classification !== tag.classification) continue;
+      const sharedV = tag.classification === 'valve-or-vessel' &&
+        (symbol.classification === 'valve' || symbol.classification === 'vessel');
+      if (symbol.classification !== tag.classification && !sharedV) continue;
       const { x, y } = tag.position;
       const dx = Math.max(box.left - x, x - box.right, 0);
       const dy = Math.max(box.top - y, y - box.bottom, 0);

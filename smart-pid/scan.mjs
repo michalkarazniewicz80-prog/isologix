@@ -62,7 +62,8 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
 
     const calibration = settings.calibration || [];
     const hasNative = native?.candidates.length > 0;
-    const needsRaster = !hasNative || calibration.length > 0;
+    const hasNativeValves = native?.candidates.some(candidate => candidate.classification === 'valve');
+    const needsRaster = !hasNativeValves || calibration.length > 0;
     const needsOcr = !native?.text.some(item => /[A-Z0-9]/i.test(item.value));
     const viewport = pdf?.page.getViewport({ scale: 3 });
     const width = Math.ceil(viewport?.width || image.naturalWidth);
@@ -116,7 +117,7 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
         onProgress(`${usePaddle ? 'PaddleOCR' : 'Scanning'} tile ${i + 1} of ${tiles.length}…`);
         const canvas = await readTile(tile);
         if (worker) {
-          const found = await runTile(worker, pixels(canvas), templates, !hasNative, !templates.length);
+          const found = await runTile(worker, pixels(canvas), templates, !hasNativeValves, !templates.length);
           for (const candidate of found) candidates.push(pageCandidate(candidate, tile));
         }
         if (ocr && !cachedOcr) {
@@ -128,16 +129,15 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
         }
       }
     }
-    if (usePaddle && !ocrFailed) Object.assign(textCache, { engine, width, height, text });
-    if (!usePaddle && !ocrFailed) {
+    if (!ocrFailed) {
       // Full tiles find references and rotated text. Re-read small neighborhoods
       // when thin CAD lettering gets lost among the drawing strokes.
       const symbols = suppressDuplicates(candidates).kept.filter(candidate => candidate.classification === 'valve');
       const lookedAt = new Set(cachedOcr ? textCache.lookedAt : []);
       const missingTags = () => associateTags(symbols, tagObservations(text, formats))
-        .filter(symbol => needsOcr ? !symbol.tag : symbol.association.status === 'unmatched');
+        .filter(symbol => needsOcr && !usePaddle ? !symbol.tag : symbol.association.status === 'unmatched');
       const initialTargets = missingTags();
-      for (const [index, region] of regions.entries()) {
+      for (const [index, region] of (usePaddle ? [] : regions).entries()) {
         const nearby = initialTargets.some(symbol => {
           const span = Math.max(symbol.box.right - symbol.box.left, symbol.box.bottom - symbol.box.top);
           const gap = Math.hypot(region.x - symbol.position.x, region.y - symbol.position.y);
@@ -184,7 +184,9 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
           const context = canvas.getContext('2d');
           context.fillStyle = 'white';
           context.fillRect(left - x, top - y, right - left, bottom - top);
-          for (const observation of await recognizeTile(ocr, canvas, tile, { scale: 1.65 })) text.push(observation);
+          const observations = usePaddle ? await readPaddleTile(ocr, canvas, tile, regions, { width, height })
+            : await recognizeTile(ocr, canvas, tile, { scale: 1.65 });
+          for (const observation of observations) text.push(observation);
           lookedAt.add(key);
         } catch (error) { await failOcr(error); break; }
       }

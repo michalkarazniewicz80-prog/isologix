@@ -137,3 +137,11 @@ test('PaddleOCR discards tags cut off at an internal tile edge', async () => {
     globalThis.document = originalDocument;
   }
 });
+
+test('numbered V tags pair with detected valve geometry and retain vessel compatibility', () => {
+  const tags = tagObservations([text('V-1', 30, 45), text('V-12', 132, 44), text('V-15', 260, 44)], valveFormats());
+  const symbols = [symbol(30, 30), symbol(130, 30), { ...symbol(260, 30), classification: 'vessel' }];
+  assert.deepEqual(associateTags(symbols, tags).map(item => item.tag?.value), ['V-1', 'V-12', 'V-15']);
+  assert.ok(associateTags([symbol(30, 30), { ...symbol(30, 60), classification: 'vessel' }], tags)
+    .every(item => item.tag === null && item.association.status === 'ambiguous'));
+});

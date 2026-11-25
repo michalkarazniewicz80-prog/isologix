@@ -295,24 +295,28 @@ export function rasterCandidates({ data, width, height }, { useValve = true } = 
   const scales = [5, 7, 10, 12, 14, 16, 19, 22, 26, 30, 35, 40, 47, 54, 63]
     .filter(r => r >= minimum && r + 3 < Math.min(width, height) / 2);
   const shapes = [];
-  const valve = [[-1, -0.65], [0, 0], [1, -0.65], [1, 0.65], [0, 0], [-1, 0.65], [-1, -0.65]];
-  for (const rotate of useValve ? [false, true] : []) {
+  for (const ratio of useValve ? [0.48, 0.65] : []) {
+    const valve = [[-1, -ratio], [0, 0], [1, -ratio], [1, ratio], [0, 0], [-1, ratio], [-1, -ratio]];
     const strokes = [];
     for (let i = 1; i < valve.length; i++) {
       for (let j = 0; j < 4; j++) {
         const x = (valve[i - 1][0] * (4 - j) + valve[i][0] * j) / 4;
         const y = (valve[i - 1][1] * (4 - j) + valve[i][1] * j) / 4;
-        strokes.push(rotate ? [y, x] : [x, y]);
+        // The center can be a join, a small ball or an actuator stem.
+        if (x || y) strokes.push([x, y]);
       }
     }
-    const blank = [[0, -0.65], [0, 0.65], [-0.35, -0.65], [0.35, 0.65]];
-    for (const x of [-0.78, -0.56, -0.32, 0, 0.32, 0.56, 0.78]) {
-      for (const y of [-0.55, -0.35, -0.17, 0.17, 0.35, 0.55]) {
-        if (Math.abs(Math.abs(y) - Math.abs(x) * 0.65) >= 0.21) blank.push([x, y]);
+    const blank = [[-0.35, -ratio], [0.35, ratio]];
+    for (const x of [-0.78, -0.56, -0.32, 0.32, 0.56, 0.78]) {
+      for (const height of [-0.85, -0.54, -0.26, 0.26, 0.54, 0.85]) {
+        if (Math.abs(Math.abs(height) - Math.abs(x)) >= 0.33) blank.push([x, height * ratio]);
       }
     }
-    shapes.push({ classification: 'valve', w: rotate ? 0.65 : 1, h: rotate ? 1 : 0.65,
-      orientation: rotate ? 90 : 0, strokes, blank: rotate ? blank.map(([x, y]) => [y, x]) : blank, radius: 0 });
+    for (const rotate of [false, true]) {
+      const orient = points => rotate ? points.map(([x, y]) => [y, x]) : points;
+      shapes.push({ classification: 'valve', w: rotate ? ratio : 1, h: rotate ? 1 : ratio,
+        orientation: rotate ? 90 : 0, strokes: orient(strokes), blank: orient(blank), radius: 0 });
+    }
   }
   const circle = Array.from({ length: 24 }, (_, i) => [Math.cos(i * Math.PI / 12), Math.sin(i * Math.PI / 12)]);
   shapes.push({
@@ -330,12 +334,17 @@ export function rasterCandidates({ data, width, height }, { useValve = true } = 
       for (let y = edge; y < height - edge; y++) {
         for (let x = edge; x < width - edge; x++) {
           if (shape.classification === 'valve') {
-            if (!probe(x, y) || !probe(x - shape.w * r, y - shape.h * r) ||
+            if (!probe(x - shape.w * r, y - shape.h * r) ||
                 !probe(x + shape.w * r, y + shape.h * r)) continue;
+            if (!probe(x, y)) {
+              const offset = Math.max(1, r * 0.17);
+              const ring = [probe(x - offset, y), probe(x + offset, y), probe(x, y - offset), probe(x, y + offset)];
+              if (ring.filter(Boolean).length < 3) continue;
+            }
             const port1 = r * 1.2, port2 = r * 1.4;
             const horizontal = shape.orientation === 0;
             const axial = offset => probe(x + (horizontal ? offset : 0), y + (horizontal ? 0 : offset));
-            if (!(axial(port1) && axial(port2) && axial(-port1) && axial(-port2))) continue;
+            if (!(axial(port1) && axial(-port1) && (axial(port2) || axial(-port2)))) continue;
           } else {
             if (!probe(x - r, y) || !probe(x + r, y) || !probe(x, y - r) || !probe(x, y + r)) continue;
             const nearPort = r * 1.19, farPort = r * 1.4;

@@ -155,3 +155,26 @@ test('recognizes PV602 as a valve tag with the default formats', () => {
     assert.deepEqual(valve.association.options.map(option => option.value), [label]);
   }
 });
+
+test('raster detects compact horizontal and vertical valves with actuator strokes', () => {
+  const width = 620, height = 450;
+  const data = new Uint8ClampedArray(width * height * 4).fill(255);
+  const outline = [[-19, -9], [0, 0], [19, -9], [19, 9], [0, 0], [-19, 9], [-19, -9]];
+  const lines = outline.slice(1).map((p, i) => [outline[i], p]).concat([
+    [[-36, 0], [-19, 0]], [[19, 0], [24, 0]], [[0, 0], [0, -17]], [[-4, -17], [4, -17]]
+  ]);
+  for (const [cx, cy, rotated] of [[100, 120, false], [300, 260, true]]) {
+    for (const [[x0, y0], [x1, y1]] of lines) {
+      const steps = 2 * Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let i = 0; i <= steps; i++) {
+        const dx = Math.round(x0 + (x1 - x0) * i / steps);
+        const dy = Math.round(y0 + (y1 - y0) * i / steps);
+        const offset = ((cy + (rotated ? dx : dy)) * width + cx + (rotated ? dy : dx)) * 4;
+        data.fill(0, offset, offset + 3);
+      }
+    }
+  }
+  const { components } = detectionResult(rasterCandidates({ width, height, data }), width, height, 'raster');
+  assert.equal(components.length, 2);
+  assert.deepEqual(components.map(({ orientation }) => orientation).sort(), [0, 90]);
+});

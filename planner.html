@@ -175,6 +175,11 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
 .draft-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #ddd; gap:8px; }
 .draft-row button { padding:6px 8px; font-size:12px; }
 .small { font-size:12px; color:#666; }
+#smart-panel { margin-top:12px; border-top:1px solid #cbd5e1; padding-top:10px; }
+#smart-panel label { display:block; margin-top:8px; font-size:13px; }
+#smart-panel input, #smart-panel select { width:100%; box-sizing:border-box; }
+#smart-panel button { margin:4px 0; }
+#smart-toggle-label { white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -185,6 +190,8 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
   <label class="file-btn">Add P&amp;ID
     <input id="upload" type="file" accept=".png,.jpg,.jpeg,.pdf" multiple>
   </label>
+
+  <label id="smart-toggle-label"><input type="checkbox" id="smart-toggle" disabled> Smart Detection</label>
 
   <!-- spacer pushes logo + user section to the right -->
   <div style="flex:1;"></div>
@@ -236,6 +243,20 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
     <div id="pidList">
       <div class="pid-empty">Upload one or more P&amp;IDs to start.</div>
     </div>
+    <section id="smart-panel" aria-label="Smart Detection" hidden>
+      <button type="button" id="smart-scan">Scan drawing</button>
+      <p class="small" id="smart-status" role="status"></p>
+      <label>Detected symbol <select id="smart-components"></select></label>
+      <div id="smart-editor" hidden>
+        <p class="small" id="smart-details"></p>
+        <label>Classification <select id="smart-classification"></select></label>
+        <label>Equipment tag <input id="smart-tag" type="text" maxlength="64"></label>
+        <p class="small">Drag the highlighted symbol to reposition it. A change requires review again.</p>
+        <button type="button" id="smart-confirm">Confirm</button>
+        <button type="button" id="smart-reject">Reject</button>
+      </div>
+      <p class="small">Save keeps confirmed and rejected results.</p>
+    </section>
   </aside>
   <div id="container"></div>
 </div>
@@ -280,6 +301,17 @@ let tool='', activeSymbol='', annotations=[], drawing=false, currentLine=null, c
 let drawings = [];
 let currentDrawingIndex = -1;
 let drawingCounter = 1;
+const sourcePdfs = new WeakMap();
+let smartReview;
+import('./smart-pid/review.mjs').then(({ mountReview }) => {
+  smartReview = mountReview({
+    stage, Konva,
+    activeDrawing: () => drawings[currentDrawingIndex],
+    activeImage: () => pidImage,
+    pdfSource: drawing => sourcePdfs.get(drawing)
+  });
+  document.getElementById('smart-toggle').disabled = false;
+}).catch(error => console.warn('Smart Detection is unavailable', error));
 const SYMBOLS = { valve: 'symbols/valve.png', flange: 'symbols/flange.png', hose_connection: 'symbols/hose_connection.png' };
 const BASE_PIN_RADIUS = 6, SYMBOL_SCALE = 0.42;
 let loadingImages = 0;
@@ -329,6 +361,7 @@ function clearStage(){
   mainLayer.destroyChildren();
   annotations = [];
   pidImage = null;
+  smartReview?.refresh();
   mainLayer.batchDraw();
 }
 
@@ -402,7 +435,7 @@ function buildDrawingState(){
 function saveCurrentDrawing(){
   if (currentDrawingIndex < 0 || !drawings[currentDrawingIndex]) return;
   const state = buildDrawingState();
-  drawings[currentDrawingIndex].pid = state.pid;
+  if (state.pid) drawings[currentDrawingIndex].pid = state.pid;
   drawings[currentDrawingIndex].annotations = state.annotations;
   updateDrawingThumbnail(currentDrawingIndex);
 }
@@ -411,7 +444,7 @@ function updateDrawingThumbnail(index){
   if (!drawings[index]) return;
   try {
     if (index === currentDrawingIndex) {
-      const thumb = stage.toDataURL({ pixelRatio: 0.2 });
+      const thumb = mainLayer.toDataURL({ pixelRatio: 0.2 });
       drawings[index].thumbnail = thumb;
     } else if (drawings[index].pid?.src) {
       drawings[index].thumbnail = drawings[index].pid.src;
@@ -553,6 +586,7 @@ function loadDrawingState(drawing){
     const img = new Image();
     img.onload = () => {
       endLoad();
+      if (drawings[currentDrawingIndex] !== drawing) return;
       const fit = fitImageToStage(drawing.pid.width || img.width, drawing.pid.height || img.height);
       pidImage = new Konva.Image({
         image: img,
@@ -564,6 +598,7 @@ function loadDrawingState(drawing){
       mainLayer.add(pidImage);
       pidImage.moveToBottom();
       mainLayer.batchDraw();
+      smartReview?.refresh();
     };
     img.onerror = () => { endLoad(); console.warn('Could not reload PID image'); };
     img.src = drawing.pid.src;
@@ -584,14 +619,19 @@ async function readFileAsPidData(file){
   const ext = file.name.split('.').pop().toLowerCase();
   if (ext === 'pdf') {
     const ab = await file.arrayBuffer();
-    const pdfDoc = await pdfjsLib.getDocument({ data:ab }).promise;
-    const page = await pdfDoc.getPage(1);
-    const vp = page.getViewport({ scale: 2 });
-    const cv = document.createElement('canvas');
-    cv.width = vp.width;
-    cv.height = vp.height;
-    await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-    return { src: cv.toDataURL('image/png'), width: cv.width, height: cv.height };
+    const task = pdfjsLib.getDocument({ data: ab, isEvalSupported: false });
+    try {
+      const pdfDoc = await task.promise;
+      const page = await pdfDoc.getPage(1);
+      const vp = page.getViewport({ scale: 2 });
+      const cv = document.createElement('canvas');
+      cv.width = vp.width;
+      cv.height = vp.height;
+      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      return { src: cv.toDataURL('image/png'), width: cv.width, height: cv.height };
+    } finally {
+      await task.destroy();
+    }
   }
   const dataUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -619,6 +659,7 @@ async function addDrawingFromFile(file){
       pid,
       annotations: []
     };
+    if (/\.pdf$/i.test(file.name)) sourcePdfs.set(drawing, file);
     drawings.push(drawing);
     if (currentDrawingIndex === -1) {
       currentDrawingIndex = 0;
@@ -1251,7 +1292,8 @@ function buildSaveObject() {
       name: d.name,
       pid: d.pid,
       annotations: d.annotations || [],
-      thumbnail: d.thumbnail || null
+      thumbnail: d.thumbnail || null,
+      smartDetection: smartReview ? smartReview.serialize(d.smartDetection) : d.smartDetection
     })),
     currentDrawingIndex
   };
@@ -1269,9 +1311,11 @@ function loadDraftData(saved) {
       name: d.name || 'Untitled',
       pid: d.pid || null,
       annotations: d.annotations || [],
-      thumbnail: d.thumbnail || null
+      thumbnail: d.thumbnail || null,
+      smartDetection: d.smartDetection?.version === 1 && Array.isArray(d.smartDetection.components)
+        ? d.smartDetection : undefined
     }));
-    currentDrawingIndex = Number.isInteger(saved.currentDrawingIndex) ? saved.currentDrawingIndex : 0;
+    currentDrawingIndex = drawings[saved.currentDrawingIndex] ? saved.currentDrawingIndex : 0;
   } else if (saved.pid || saved.annotations) {
     drawings = [{
       id: `drawing_${Date.now()}_${drawingCounter++}`,

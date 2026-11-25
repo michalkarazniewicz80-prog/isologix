@@ -6,6 +6,7 @@
   "scripts": {
     "start": "netlify dev",
     "dev": "netlify dev",
+    "test": "node --test smart-pid/detect.test.mjs",
     "build": "echo \"No build step\""
   },
   "dependencies": {

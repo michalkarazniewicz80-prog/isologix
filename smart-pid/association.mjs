@@ -1,5 +1,5 @@
 // Site masks use # for one digit, @ for one letter, and literal separators.
-export const defaultValvePrefixes = 'HV, XV, MOV, SDV, ESDV, FCV, PCV, LCV, TCV, VLV, BV, GV';
+export const defaultValvePrefixes = 'HV, XV, MOV, SDV, ESDV, FCV, PCV, PV, LCV, TCV, VLV, BV, GV';
 
 export function valveFormats(input = '') {
   if (typeof input !== 'string') throw new Error('Valve tag formats must be text.');

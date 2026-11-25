@@ -140,3 +140,18 @@ test('drafts save reviewed decisions and exclude diagnostics', () => {
   assert.equal(merged.method, 'mixed');
   assert.deepEqual(merged.components, [valve]);
 });
+
+test('recognizes PV602 as a valve tag with the default formats', () => {
+  const candidates = vectorCandidates(extractPaths(nativeFixture(), ops, viewport), 400, 300);
+  for (const label of ['PV602', 'PV-602', 'PV 602']) {
+    const observations = extractText([
+      text(label, 103, 100, 20),
+      text('PT602', 88, 109, 18),
+      text('50-PV602-A', 82, 83, 26)
+    ], viewport);
+    const [valve] = detectionResult(candidates, 400, 300, 'vector', observations).components;
+    assert.equal(valve.tag?.value, label);
+    assert.equal(valve.association.status, 'assigned');
+    assert.deepEqual(valve.association.options.map(option => option.value), [label]);
+  }
+});

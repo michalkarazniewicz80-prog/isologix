@@ -11,6 +11,7 @@ export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSourc
   const classification = byId('classification'), details = byId('details');
   const tagInput = byId('tag'), confirm = byId('confirm'), reject = byId('reject');
   const diagnostic = byId('diagnostic'), diagnosticLegend = byId('diagnostic-legend');
+  const ocrEngine = byId('ocr');
   const formats = byId('formats'), addSample = byId('add-sample'), clearSamples = byId('clear-samples');
   const calibrationInfo = byId('calibration-info'), tagOptions = byId('tag-options');
   const pending = new WeakMap();
@@ -47,6 +48,8 @@ export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSourc
     const calibrations = shownDrawing?.smartSettings?.calibration || [];
     formats.value = shownDrawing?.smartSettings?.formats || '';
     formats.disabled = !shownDrawing || busy;
+    ocrEngine.value = shownDrawing?.smartSettings?.ocrEngine === 'paddle' ? 'paddle' : 'tesseract';
+    ocrEngine.disabled = !shownDrawing || busy;
     scan.disabled = !image || !shownDrawing || busy || Boolean(capture);
     addSample.disabled = !image || busy || calibrations.length >= 4 && !capture;
     clearSamples.disabled = busy || (!capture && !calibrations.length);
@@ -182,6 +185,7 @@ export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSourc
 
   toggle.addEventListener('change', () => { if (!toggle.checked) capture = undefined; refresh(); });
   diagnostic.addEventListener('change', refresh);
+  ocrEngine.addEventListener('change', () => { settings().ocrEngine = ocrEngine.value; });
   formats.addEventListener('change', () => {
     try {
       valveFormats(formats.value);

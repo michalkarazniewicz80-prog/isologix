@@ -8,6 +8,16 @@ Open **Scan settings**, choose **Select valve sample**, and click opposite corne
 
 Enter comma-separated valve prefixes or exact masks in **Valve tag formats**. Prefixes such as `HV` accept numeric IDs with an optional suffix. Masks use `#` for a digit, `@` for a letter, and literal separators. For example, `XV-@###` matches `XV-Y241`, and `X### XV` can match an explicitly configured stacked callout. A custom list replaces the defaults for that drawing.
 
+## PaddleOCR trial
+
+In **Smart Detection → Scan settings → Tag reader**, select **PaddleOCR (trial)** and scan. The selection is saved per drawing. Use a fresh copy of a drawing or leave candidates unreviewed when comparing readers, because rescans preserve confirmed and rejected decisions.
+
+PaddleOCR scans overlapping tiles independently of symbol recognition, reads upright and rotated text, and uses native callout circles as pairing evidence where available. **Standard** remains the default. The trial does not change symbol recognition. A full sheet can take several minutes. The application loads the model and runtime from its own origin, and the worker processes drawing pixels in the browser.
+
+Netlify runs `npm run build` to bundle PaddleOCR.js and prepare the two checksum-verified model archives. For local testing, run `npm ci` and `npm run build` before serving the repository over HTTP. The build requires `curl` and access to the PaddlePaddle model mirror on the first run.
+
+The trial uses Apache 2.0 PP-OCRv5 mobile detector and English recognizer weights. [PaddleOCR.js browser documentation](https://www.paddleocr.ai/latest/en/version3.x/inference_deployment/cross_platform/browser.html) · [Detector model card](https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det) · [Recognizer model card](https://huggingface.co/PaddlePaddle/en_PP-OCRv5_mobile_rec)
+
 ## Recognition and review
 
 - PDF.js reads native paths and text from the first displayed PDF page. Geometry determines class before tag association. The native recognizer covers common bow-tie valves, a circular pump variant with an internal impeller, and capsule-like vessels.

@@ -2,6 +2,7 @@ import { detectionResult } from './detect.mjs';
 import { detectPdf, openPdf } from './pdf.mjs';
 import { compileTemplates, makeTemplate } from './calibration.mjs';
 import { openOcr, recognizeTile } from './ocr.mjs';
+import { openPaddle, readPaddleTile } from './paddle.mjs';
 import { drawingTiles, pageCandidate } from './tiles.mjs';
 import { associateTags, tagObservations, valveFormats } from './association.mjs';
 import { suppressDuplicates } from './suppress.mjs';
@@ -44,7 +45,10 @@ function runTile(worker, image, templates, generic, useValve) {
 
 export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnostic = false, textCache = {}, onProgress = () => {} }) {
   const formats = valveFormats(settings.formats);
+  const usePaddle = settings.ocrEngine === 'paddle';
+  const engine = usePaddle ? 'paddle' : 'tesseract';
   let pdf, native, worker, ocr;
+  const closeOcr = instance => usePaddle ? instance?.dispose() : instance?.terminate();
   let ocrFailed = false;
   try {
     if (file && pdfjs) {
@@ -70,26 +74,28 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
         box: { left: candidate.box.left * sx, right: candidate.box.right * sx,
           top: candidate.box.top * sy, bottom: candidate.box.bottom * sy }
       }));
-    const cachedOcr = textCache.width === width && textCache.height === height;
+    const cachedOcr = textCache.engine === engine && textCache.width === width && textCache.height === height;
+    const fullOcr = usePaddle || needsOcr;
+    const regions = (native?.textRegions || []).map(region => ({ ...scalePoint(region), radius: region.radius * sx }));
     const text = cachedOcr ? textCache.text.slice() : (native?.text || []).map(item => ({ ...item, position: scalePoint(item.position), size: item.size * sx }));
     const readTile = tile => pdf ? pdfTile(pdf.page, viewport, tile) : imageTile(image, tile);
-    let usedOcr = cachedOcr || needsOcr;
+    let usedOcr = cachedOcr || fullOcr;
     let method = 'vector';
     const failOcr = async error => {
       ocrFailed = true;
       console.warn('Smart Detection OCR is unavailable or incomplete', error);
       const failedWorker = ocr;
       ocr = undefined;
-      await Promise.allSettled([failedWorker?.terminate()]);
+      await Promise.allSettled([closeOcr(failedWorker)]);
     };
     const ensureOcr = async () => {
       if (ocr || ocrFailed) return;
       usedOcr = true;
-      onProgress('Loading local OCR…');
-      try { ocr = await openOcr(); }
+      onProgress(usePaddle ? 'Loading PaddleOCR…' : 'Loading local OCR…');
+      try { ocr = await (usePaddle ? openPaddle() : openOcr()); }
       catch (error) { await failOcr(error); }
     };
-    if (needsRaster || (needsOcr && !cachedOcr)) {
+    if (needsRaster || (fullOcr && !cachedOcr)) {
       const samples = [];
       for (const bounds of calibration) {
         const tile = { x: Math.floor(bounds.left * width), y: Math.floor(bounds.top * height),
@@ -102,24 +108,28 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
         worker = new Worker(new URL('./raster-worker.mjs', import.meta.url), { type: 'module' });
         method = hasNative ? 'mixed' : templates.length ? 'calibrated' : 'raster';
       }
-      if (needsOcr && !cachedOcr) await ensureOcr();
+      if (fullOcr && !cachedOcr) await ensureOcr();
       const tileSize = Math.max(1024, Math.ceil(overlap) + 256);
       const tiles = [...drawingTiles(width, height, Math.ceil(overlap), tileSize)];
       for (const [i, tile] of tiles.entries()) {
         if (!worker && !ocr) break;
-        onProgress(`Scanning tile ${i + 1} of ${tiles.length}…`);
+        onProgress(`${usePaddle ? 'PaddleOCR' : 'Scanning'} tile ${i + 1} of ${tiles.length}…`);
         const canvas = await readTile(tile);
         if (worker) {
           const found = await runTile(worker, pixels(canvas), templates, !hasNative, !templates.length);
           for (const candidate of found) candidates.push(pageCandidate(candidate, tile));
         }
         if (ocr && !cachedOcr) {
-          try { for (const observation of await recognizeTile(ocr, canvas, tile)) text.push(observation); }
+          try {
+            const observations = usePaddle ? await readPaddleTile(ocr, canvas, tile, regions) : await recognizeTile(ocr, canvas, tile);
+            for (const observation of observations) text.push(observation);
+          }
           catch (error) { await failOcr(error); }
         }
       }
     }
-    if (!ocrFailed) {
+    if (usePaddle && !ocrFailed) Object.assign(textCache, { engine, width, height, text });
+    if (!usePaddle && !ocrFailed) {
       // Full tiles find references and rotated text. Re-read small neighborhoods
       // when thin CAD lettering gets lost among the drawing strokes.
       const symbols = suppressDuplicates(candidates).kept.filter(candidate => candidate.classification === 'valve');
@@ -127,7 +137,6 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
       const missingTags = () => associateTags(symbols, tagObservations(text, formats))
         .filter(symbol => needsOcr ? !symbol.tag : symbol.association.status === 'unmatched');
       const initialTargets = missingTags();
-      const regions = (native?.textRegions || []).map(region => ({ ...scalePoint(region), radius: region.radius * sx }));
       for (const [index, region] of regions.entries()) {
         const nearby = initialTargets.some(symbol => {
           const span = Math.max(symbol.box.right - symbol.box.left, symbol.box.bottom - symbol.box.top);
@@ -179,13 +188,13 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
           lookedAt.add(key);
         } catch (error) { await failOcr(error); break; }
       }
-      if (usedOcr && !ocrFailed) Object.assign(textCache, { width, height, text, lookedAt });
+      if (usedOcr && !ocrFailed) Object.assign(textCache, { engine, width, height, text, lookedAt });
     }
     const result = detectionResult(candidates, width, height, method, text, settings.formats, diagnostic);
-    result.textMethod = ocrFailed ? 'ocr-incomplete' : usedOcr ? needsOcr ? 'ocr' : 'mixed' : 'native';
+    result.textMethod = ocrFailed ? 'ocr-incomplete' : usePaddle ? 'paddle-ocr' : usedOcr ? needsOcr ? 'ocr' : 'mixed' : 'native';
     return result;
   } finally {
     worker?.terminate();
-    await Promise.allSettled([ocr?.terminate(), pdf?.close()]);
+    await Promise.allSettled([closeOcr(ocr), pdf?.close()]);
   }
 }

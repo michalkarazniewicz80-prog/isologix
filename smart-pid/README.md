@@ -6,7 +6,7 @@ Enable **Smart Detection**, choose a drawing, and select **Scan drawing**. Selec
 
 Open **Scan settings**, choose **Select valve sample**, and click opposite corners of a tight box around one representative valve. Exclude nearby text and other symbols. Add up to four examples of distinct shapes or drafting conventions, then scan again. Each example is searched across the drawing at 30° rotation intervals and approximately 0.75–1.32 times the selected size. The scanner retains native vector matches and adds high-confidence sample matches. Small, irregular, or very different valve shapes may need another example.
 
-Enter comma-separated valve prefixes or exact masks in **Valve tag formats**. Prefixes such as `HV` accept numeric IDs with an optional suffix. Masks use `#` for a digit, `@` for a letter, and literal separators. For example, `XV-@###` matches `XV-Y241`, and `X### XV` can match an explicitly configured stacked callout. A custom list replaces the defaults for that drawing.
+Enter comma-separated valve prefixes or exact masks in **Valve tag formats**. Prefixes such as `HV` accept numeric IDs with an optional suffix. Masks use `#` for a digit, `@` for a letter, and literal separators. For example, `XV-@###` matches `XV-Y241`, and `X### XV` can match an explicitly configured stacked callout. Common formats such as `PV602`, `HV-M023A`, and `X233 XV` are detected automatically. The optional site list adds to the defaults.
 
 ## PaddleOCR trial
 
@@ -24,6 +24,7 @@ The trial uses Apache 2.0 PP-OCRv5 mobile detector and English recognizer weight
 - Raster scans use overlapping source-resolution tiles for images and 3× PDF tiles when the original file is available. Generic fallback scores valve shape, surrounding blank space, and visible pipe continuation. Calibration uses the selected drawing shapes. OCR reads horizontal text and both 90° rotations when native text is unavailable. On mixed PDFs, it also searches near valves with no native tag match. Isolated crops assist with plotted callout text. OCR can still miss small letters or read them incorrectly.
 - Tag association uses matching classes, spatial constraints, and a one-to-one match with a minimum score and a margin over competing matches. Whole-token format checks keep line references, dimensions, and instrument identifiers out of valve matches. Repeated references and close alternatives are flagged. An unmatched, repeated, or ambiguous result starts with a blank tag. A reviewer can choose an observed tag or supply a correction.
 - Enable **Diagnostics** before scanning to see text positions, raw candidate boxes, rejected duplicates, tag associations, and recognition methods. Zoom in to read extracted text. Diagnostic data remains in memory.
+- Plotting a point directly on a uniquely matched symbol fills the editable Description in both schedules with its equipment tag. The plot stays untagged when there is no match or the symbol hit is ambiguous.
 - Existing manual annotations drive isolation schedules and PDF export. Smart Detection stores observations and review decisions in an optional drawing record and has no pipework graph or boundary analysis.
 
 ## Format and licensing

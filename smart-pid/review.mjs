@@ -2,7 +2,14 @@ import { classifications, mergeScan, moveComponent, reviewedResult } from './det
 import { scanDrawing } from './scan.mjs';
 import { valveFormats } from './association.mjs';
 
-export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSource }) {
+export function tagAtPoint(components, position, padding) {
+  const matches = components.filter(({ bounds, review }) => review !== 'rejected' &&
+    position.x >= bounds.left - padding.x && position.x <= bounds.right + padding.x &&
+    position.y >= bounds.top - padding.y && position.y <= bounds.bottom + padding.y);
+  return matches.length === 1 ? matches[0].tag?.value || '' : '';
+}
+
+export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSource, isPlottingPoint }) {
   const layer = new Konva.Layer();
   stage.add(layer);
   const byId = id => document.getElementById('smart-' + id);
@@ -103,7 +110,7 @@ export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSourc
       const marker = new Konva.Group({
         x: image.x() + position.x * w,
         y: image.y() + position.y * h,
-        draggable: item === component
+        draggable: item === component && !isPlottingPoint()
       });
       const color = item === component ? '#9333ea' : item.review === 'confirmed' ? '#047857' : '#0369a1';
       marker.add(new Konva.Rect({
@@ -120,6 +127,7 @@ export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSourc
       }));
       marker.on('click tap', event => {
         if (event.evt.shiftKey || event.evt.button > 0) return;
+        if (isPlottingPoint()) return;
         event.cancelBubble = true;
         selection = item.id;
         refresh();
@@ -283,5 +291,14 @@ export function mountReview({ stage, Konva, activeDrawing, activeImage, pdfSourc
     }
   });
   refresh();
-  return { refresh, serialize: reviewedResult, isCalibrating: () => Boolean(capture) };
+  function tagAt(position) {
+    const image = activeImage();
+    if (!image) return '';
+    const w = image.width(), h = image.height();
+    return tagAtPoint(components(), {
+      x: (position.x - image.x()) / w, y: (position.y - image.y()) / h
+    }, { x: 2 / w, y: 2 / h });
+  }
+
+  return { refresh, serialize: reviewedResult, isCalibrating: () => Boolean(capture), tagAt };
 }

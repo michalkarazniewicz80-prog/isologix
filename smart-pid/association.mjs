@@ -1,5 +1,14 @@
 // Site masks use # for one digit, @ for one letter, and literal separators.
-export const defaultValvePrefixes = 'HV, XV, MOV, SDV, ESDV, FCV, PCV, PV, LCV, TCV, VLV, BV, GV';
+const defaultValvePrefixes = 'HV, XV, MOV, SDV, ESDV, BDV, FCV, PCV, PV, LCV, TCV, FV, LV, TV, CV, PSV, PRV, ZV, VLV, BV, GV';
+const prefixes = defaultValvePrefixes.split(', ');
+const valveCode = `(?:${prefixes.join('|')})`;
+const defaultFormats = [
+  new RegExp(`^${valveCode}[- ]?[0-9]{2,6}[A-Z]?$`),
+  new RegExp(`^${valveCode}-[A-Z][0-9]{2,6}[A-Z]?$`),
+  new RegExp(`^(?:[A-Z]{1,2}|[0-9]{1,3})-${valveCode}-[0-9]{2,6}[A-Z]?$`),
+  new RegExp(`^${valveCode}-[0-9]{1,3}-[0-9]{2,6}[A-Z]?$`),
+  new RegExp(`^[A-Z][0-9]{2,6} ${valveCode}$`)
+];
 
 export function valveFormats(input = '') {
   if (typeof input !== 'string') throw new Error('Valve tag formats must be text.');
@@ -8,10 +17,9 @@ export function valveFormats(input = '') {
       !/[A-Z]/.test(mask) || (/[#@]/.test(mask) && !mask.includes('#')))) {
     throw new Error('Use prefixes or masks such as HV, XV-#### or ##-XV-###.');
   }
-  const entries = masks.length ? masks : defaultValvePrefixes.split(', ');
-  return entries.map(mask => new RegExp(/[#@]/.test(mask)
+  return [...defaultFormats, ...masks.map(mask => new RegExp(/[#@]/.test(mask)
     ? '^' + mask.replaceAll('.', '\\.').replaceAll('#', '[0-9]').replaceAll('@', '[A-Z]') + '$'
-    : '^' + mask.replaceAll('.', '\\.') + '[- ]?[0-9]{2,6}[A-Z]?$'));
+    : '^' + mask.replaceAll('.', '\\.') + '[- ]?[0-9]{2,6}[A-Z]?$'))];
 }
 
 function tagClass(value, formats) {
@@ -19,6 +27,7 @@ function tagClass(value, formats) {
   // must never produce a partial match.
   if (/^(?:P|PU|PMP)[- ]?\d{2,6}[A-Z]?$/.test(value)) return 'pump';
   if (/^(?:V|TK|T|DR|VES)[- ]?\d{2,6}[A-Z]?$/.test(value)) return 'vessel';
+  if (defaultFormats.some(format => format.test(value))) return 'valve';
   if (!/^[FPLT]CV/.test(value) && /^[FPLTA][ITGSC][A-Z]?[- ]?\d{2,6}[A-Z]?$/.test(value)) return 'instrument';
   if (formats.some(format => format.test(value))) return 'valve';
   return null;

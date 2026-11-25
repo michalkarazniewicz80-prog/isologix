@@ -249,10 +249,13 @@ footer{flex-shrink:0;background:#f9f9f9;text-align:center;padding:10px 0;font-si
       <details>
         <summary>Scan settings</summary>
         <label>Tag reader <select id="smart-ocr"><option value="tesseract">Standard</option><option value="paddle">PaddleOCR (trial)</option></select></label>
-        <label>Valve tag formats
-          <input id="smart-formats" type="text" maxlength="350" placeholder="HV, XV-@###">
-        </label>
-        <p class="small">Comma-separated prefixes or masks. Use # for a digit and @ for a letter. Leave blank for defaults.</p>
+        <details>
+          <summary>Optional site tag formats</summary>
+          <label>Additional valve formats
+            <input id="smart-formats" type="text" maxlength="350" placeholder="XV-@###">
+          </label>
+          <p class="small">Smart Detection reads common valve formats automatically. Add site-specific prefixes or masks only if needed. Use # for a digit and @ for a letter.</p>
+        </details>
         <button type="button" id="smart-add-sample">Select valve sample</button>
         <button type="button" id="smart-clear-samples">Clear samples</button>
         <p class="small" id="smart-calibration-info"></p>
@@ -322,7 +325,8 @@ import('./smart-pid/review.mjs').then(({ mountReview }) => {
     stage, Konva,
     activeDrawing: () => drawings[currentDrawingIndex],
     activeImage: () => pidImage,
-    pdfSource: drawing => sourcePdfs.get(drawing)
+    pdfSource: drawing => sourcePdfs.get(drawing),
+    isPlottingPoint: () => isPointTool(tool)
   });
   document.getElementById('smart-toggle').disabled = false;
 }).catch(error => console.warn('Smart Detection is unavailable', error));
@@ -770,9 +774,9 @@ function escapeHtml(s){ return String(s||'').replaceAll('&','&amp;').replaceAll(
   Tool selection & stage events
    --------------------------- */
 document.querySelectorAll('button[data-tool]').forEach(b=>{
-  b.addEventListener('click', ()=>{ tool=b.dataset.tool; activeSymbol=''; if(tool==='text') textActive=false; document.getElementById('symbolSelect').value=''; });
+  b.addEventListener('click', ()=>{ tool=b.dataset.tool; activeSymbol=''; if(tool==='text') textActive=false; document.getElementById('symbolSelect').value=''; smartReview?.refresh(); });
 });
-document.getElementById('symbolSelect').addEventListener('change', e=>{ activeSymbol = e.target.value; tool=''; });
+document.getElementById('symbolSelect').addEventListener('change', e=>{ activeSymbol = e.target.value; tool=''; smartReview?.refresh(); });
 
 window.addEventListener('keydown', e=>{ if(e.key==='Shift') shiftPressed=true; if(e.key==='Enter') finishLine(); });
 window.addEventListener('keyup', e=>{ if(e.key==='Shift') shiftPressed=false; });
@@ -826,6 +830,8 @@ stage.on('mousemove touchmove', e=>{
   mainLayer.batchDraw();
 });
 
+function isPointTool(name) { return name === 'point' || name === 'vent' || name === 'spade'; }
+
 stage.on('click', ()=>{
   if (smartReview?.isCalibrating()) return;
   const pos = getPointer();
@@ -837,7 +843,7 @@ stage.on('click', ()=>{
   }
   if(activeSymbol){ insertSymbol(activeSymbol,pos.x,pos.y); activeSymbol=''; document.getElementById('symbolSelect').value=''; return; }
   if(tool==='text' && !textActive){ addTextAnnotation(pos.x,pos.y); textActive=true; return; }
-  if(tool==='point' || tool==='vent' || tool==='spade'){
+  if (isPointTool(tool)) {
     const color = tool==='point' ? 'rgba(255,0,0,0.7)' : tool==='vent' ? 'rgba(0,200,0,0.7)' : 'rgba(0,0,255,0.7)';
     const id = getNextPinID();
     const c = new Konva.Circle({ x:pos.x, y:pos.y, radius:BASE_PIN_RADIUS, fill:color, stroke:'#111', strokeWidth:1, draggable:true });
@@ -851,7 +857,7 @@ stage.on('click', ()=>{
     t.setAttr('annoId', annoId);
     mainLayer.add(c); mainLayer.add(t);
     annotations.push({ annoId, id, type:tool, shapeType:'circle', attrs: { id, x: c.x(), y: c.y(), radius: BASE_PIN_RADIUS, fill: color, stroke:'#111', strokeWidth:1 } });
-    addPointRow(id, tool, c);
+    addPointRow(id, tool, c, smartReview?.tagAt(pos));
     mainLayer.batchDraw();
     return;
   }
@@ -896,7 +902,7 @@ stage.on('mousemove', ()=>{
 /* ---------------------------
   Add point row (table)
    --------------------------- */
-function addPointRow(id,type,circle){
+function addPointRow(id,type,circle, equipmentTag = ''){
   const tbody = document.querySelector('#pointsTable tbody');
   const tr = document.createElement('tr');
   tr.dataset.id = id; tr.dataset.tool = type;
@@ -929,6 +935,7 @@ function addPointRow(id,type,circle){
     <td><select class="p-iso">${isoOptions}</select></td>
   `;
   const descInput = tr.querySelector('.p-desc'), catSelect = tr.querySelector('.p-cat'), isoSelect = tr.querySelector('.p-iso');
+  descInput.value = equipmentTag;
   descInput.addEventListener('input', updateDeisoTable);
   catSelect.addEventListener('change', updateDeisoTable);
   isoSelect.addEventListener('change', updateDeisoTable);

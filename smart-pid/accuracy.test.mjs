@@ -95,3 +95,24 @@ test('conflicting OCR digits at the same printed tag require review', () => {
   assert.deepEqual(valve.association.options.map(option => option.value), ['PV602', 'PV620']);
   assert.ok(valve.association.options.every(option => option.conflictingReading));
 });
+
+test('automatic formats recognize common site tags without a custom mask', () => {
+  const inputs = ['HV-M023A', 'X-CV-310', 'X233 XV', '01-XV-0602', 'HV-04-002', 'PV602', 'PT602', 'DN200', '600-TRW-0023'];
+  const observations = inputs.map((value, i) => text(value, 200 * i, 20));
+  const expected = inputs.slice(0, 6);
+  for (const optionalFormat of ['', 'MYV-###']) {
+    assert.deepEqual(tagObservations(observations, valveFormats(optionalFormat))
+      .filter(tag => tag.classification === 'valve').map(tag => tag.value), expected);
+  }
+});
+
+test('plotting uses only a unique recognized tag at the clicked point', async () => {
+  const { tagAtPoint } = await import('./review.mjs');
+  const bounds = { left: 0.4, top: 0.4, right: 0.6, bottom: 0.6 };
+  const item = { bounds, review: 'pending', tag: { value: 'PV602' } };
+  const point = { x: 0.5, y: 0.5 }, padding = { x: 0.01, y: 0.01 };
+  assert.equal(tagAtPoint([item], point, padding), 'PV602');
+  assert.equal(tagAtPoint([item, { ...item, tag: null }], point, padding), '');
+  assert.equal(tagAtPoint([{ ...item, review: 'rejected' }], point, padding), '');
+  assert.equal(tagAtPoint([item], { x: 0.8, y: 0.5 }, padding), '');
+});

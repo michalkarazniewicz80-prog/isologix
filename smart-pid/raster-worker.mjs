@@ -1,5 +1,7 @@
-import { rasterCandidates, detectionResult } from './detect.mjs';
+import { rasterCandidates } from './detect.mjs';
+import { calibratedCandidates } from './calibration.mjs';
 
-self.onmessage = ({ data: { image, tags } }) => {
-  self.postMessage(detectionResult(rasterCandidates(image, tags), image.width, image.height, 'raster'));
+self.onmessage = ({ data: { image, templates, generic, useValve } }) => {
+  const calibrated = calibratedCandidates(image, templates);
+  self.postMessage(generic ? [...calibrated, ...rasterCandidates(image, { useValve })] : calibrated);
 };

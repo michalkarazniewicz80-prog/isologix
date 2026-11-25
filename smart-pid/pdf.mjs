@@ -1,4 +1,5 @@
-import { extractTags, vectorCandidates } from './detect.mjs';
+import { extractText, vectorCandidates } from './detect.mjs';
+import { circularTextRegions } from './text-regions.mjs';
 
 // PDF.js 3.x supplies path operations and operands in parallel arrays.
 export function extractPaths({ fnArray, argsArray }, ops, viewport) {
@@ -82,18 +83,26 @@ export function extractPaths({ fnArray, argsArray }, ops, viewport) {
   return paths;
 }
 
-export async function detectPdf(pdfjs, file) {
+export async function openPdf(pdfjs, file) {
   const task = pdfjs.getDocument({ data: await file.arrayBuffer(), isEvalSupported: false });
   try {
     const pdf = await task.promise;
     const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 1 });
-    const [operators, text] = await Promise.all([page.getOperatorList(), page.getTextContent()]);
-    const tags = extractTags(text.items, viewport);
-    const { width, height } = viewport;
-    return { candidates: vectorCandidates(extractPaths(operators, pdfjs.OPS, viewport), tags, width, height),
-      tags, width, height };
-  } finally {
+    return { page, close: () => task.destroy() };
+  } catch (error) {
     await task.destroy();
+    throw error;
   }
+}
+
+export async function detectPdf(page, ops) {
+  const viewport = page.getViewport({ scale: 1 });
+  const { width, height } = viewport;
+  const [operators, text] = await Promise.allSettled([page.getOperatorList(), page.getTextContent()]);
+  const paths = operators.status === 'fulfilled' ? extractPaths(operators.value, ops, viewport) : [];
+  const observations = text.status === 'fulfilled' ? extractText(text.value.items, viewport) : [];
+  return {
+    candidates: vectorCandidates(paths, width, height), text: observations,
+    textRegions: observations.length ? [] : circularTextRegions(paths, width, height), width, height
+  };
 }

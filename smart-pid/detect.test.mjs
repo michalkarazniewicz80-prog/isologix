@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { detectionResult, extractTags, mergeScan, moveComponent, rasterCandidates, reviewedResult, vectorCandidates } from './detect.mjs';
-import { detectPdf, extractPaths } from './pdf.mjs';
+import { detectionResult, extractText, mergeScan, moveComponent, rasterCandidates, reviewedResult, vectorCandidates } from './detect.mjs';
+import { detectPdf, extractPaths, openPdf } from './pdf.mjs';
 
 const ops = Object.fromEntries('save restore transform paintFormXObjectBegin paintFormXObjectEnd constructPath moveTo lineTo rectangle closePath curveTo curveTo2 curveTo3 stroke closeStroke fill eoFill fillStroke eoFillStroke closeFillStroke closeEOFillStroke endPath'.split(' ').map((op, i) => [op, i + 1]));
 const viewport = { width: 400, height: 300, convertToViewportPoint: (x, y) => [x, 300 - y] };
@@ -24,52 +24,55 @@ function nativeFixture() {
 
 const text = (str, x, y, width) => ({ str, width, transform: [6, 0, 0, 6, x, y] });
 
-test('native paths resolve transforms, ignore clipping-only paths and pair split tags', () => {
+test('native paths resolve transforms, avoid tag-driven classes and join split text runs', () => {
   const paths = extractPaths(nativeFixture(), ops, viewport);
   assert.equal(paths.length, 3);
   assert.deepEqual(paths[0][0], [{ x: 100, y: 200 }, { x: 105, y: 208 }]);
-  const tags = extractTags([text('HV', 111, 100, 8), text('-', 119, 100, 3), text('101', 122, 100, 12),
+  const observations = extractText([text('HV', 106, 100, 8), text('-', 114, 100, 3), text('101', 117, 100, 12),
     text('V-205', 218, 105, 19), text('P-999', 89, 100, 11)], viewport);
-  const result = detectionResult(vectorCandidates(paths, tags, 400, 300), 400, 300, 'vector');
-  assert.deepEqual(result.components.map(item => [item.classification, item.tag.value]),
-    [['valve', 'HV-101'], ['vessel', 'V-205']]);
+  const result = detectionResult(vectorCandidates(paths, 400, 300), 400, 300, 'vector', observations);
+  assert.deepEqual(result.components.map(item => [item.classification, item.tag.value]), [['valve', 'HV-101']]);
   assert.deepEqual(result.components[0].position, { x: 0.25, y: 2 / 3 });
   assert.deepEqual(result.components[0].bounds, { left: 95 / 400, top: 192 / 300, right: 105 / 400, bottom: 208 / 300 });
 });
 
-test('closed circular vector paths use nearby equipment tags for classification', () => {
+test('recognizes unsplit CAD bow ties and requires an impeller for a pump', () => {
+  const at = (x, y) => ({ x, y });
+  const a = at(93, 96), b = at(93, 104), c = at(107, 96), d = at(107, 104);
+  const paths = [[[a, b]], [[a, d]], [[b, c]], [[c, d]]];
+  assert.deepEqual(vectorCandidates(paths, 400, 300).map(c => c.classification), ['valve']);
   const operators = operatorList([
     [ops.constructPath, [[ops.moveTo, ops.curveTo, ops.curveTo, ops.curveTo, ops.curveTo],
       [110, 100, 110, 105, 105, 110, 100, 110, 95, 110, 90, 105, 90, 100,
-        90, 95, 95, 90, 100, 90, 105, 90, 110, 95, 110, 100]]],
-    [ops.stroke]
+        90, 95, 95, 90, 100, 90, 105, 90, 110, 95, 110, 100]]], [ops.stroke]
   ]);
-  const paths = extractPaths(operators, ops, viewport);
-  assert.equal(vectorCandidates(paths, [], 400, 300).length, 0);
-  for (const [tag, expected] of [['P-101', 'pump'], ['PI-101', 'instrument']]) {
-    const tags = extractTags([text(tag, 113, 99, 16)], viewport);
-    assert.equal(vectorCandidates(paths, tags, 400, 300)[0].classification, expected);
-  }
+  const circle = extractPaths(operators, ops, viewport);
+  assert.equal(vectorCandidates(circle, 400, 300).length, 0);
+  const p = at(96, 197), q = at(96, 203), r = at(103, 200);
+  assert.deepEqual(vectorCandidates([...circle, [[p, q], [q, r], [r, p]]], 400, 300)
+    .map(c => c.classification), ['pump']);
 });
 
-test('PDF adapter extracts page one and releases PDF.js resources on success and failure', async () => {
+test('PDF adapter keeps geometry when text is unavailable and closes a failed document', async () => {
   let destroyed = 0;
   let fail = false;
-  const pdfjs = { ops, OPS: ops, getDocument: options => {
+  const pdfjs = { OPS: ops, getDocument: options => {
     assert.equal(options.isEvalSupported, false);
     return { promise: Promise.resolve({ getPage: async page => {
       assert.equal(page, 1);
+      if (fail) throw new Error('page unavailable');
       return { getViewport: () => viewport, getOperatorList: async () => nativeFixture(),
-        getTextContent: async () => {
-          if (fail) throw new Error('text unavailable');
-          return { items: [] };
-        } };
+        getTextContent: async () => { throw new Error('text unavailable'); } };
     } }), destroy: async () => destroyed++ };
   } };
   const file = { arrayBuffer: async () => new ArrayBuffer(0) };
-  assert.ok((await detectPdf(pdfjs, file)).candidates.length);
+  const pdf = await openPdf(pdfjs, file);
+  const result = await detectPdf(pdf.page, ops);
+  assert.ok(result.candidates.length);
+  assert.deepEqual(result.text, []);
+  await pdf.close();
   fail = true;
-  await assert.rejects(detectPdf(pdfjs, file), /text unavailable/);
+  await assert.rejects(openPdf(pdfjs, file), /page unavailable/);
   assert.equal(destroyed, 2);
 });
 
@@ -90,8 +93,13 @@ function rasterFixture() {
   return { image: { width, height, data }, draw() {
     outline(valve.map(([x, y]) => [x + 80, y + 80]));
     outline(valve.map(([x, y]) => [y + 140, x + 120]));
+    line([55, 80], [70, 80]);
+    line([90, 80], [105, 80]);
+    line([140, 96], [140, 110]);
+    line([140, 130], [140, 145]);
     outline(Array.from({ length: 36 }, (_, i) => [220 + 10 * Math.cos(i * Math.PI / 18), 155 + 10 * Math.sin(i * Math.PI / 18)]));
     outline([[214.5, 152], [220.5, 155], [214.5, 158]]);
+    line([230, 155], [249, 155]);
     line([30, 190], [290, 190]);
     line([120, 170], [120, 215]);
   } };
@@ -107,17 +115,18 @@ test('raster fallback detects both valve orientations and a pump, and rejects pl
     assert.ok(result.components.some(item => item.classification === classification && item.source === 'raster' &&
       Math.hypot(item.position.x * width - x, item.position.y * height - y) <= 2), classification + ' at ' + x);
   }
-  assert.ok(result.components.every(item => item.position.y * height < 175 && item.tag === null && item.confidence < 0.7));
+  assert.ok(result.components.every(item => item.position.y * height < 175 && item.tag === null && item.confidence < 0.8));
 });
 
-test('drafts save decisions, reposition within page bounds and retain reviews across scans', () => {
-  const result = detectionResult(vectorCandidates(extractPaths(nativeFixture(), ops, viewport),
-    extractTags([text('V-205', 218, 105, 19)], viewport), 400, 300), 400, 300, 'vector');
+test('drafts save reviewed decisions and exclude diagnostics', () => {
+  const candidates = vectorCandidates(extractPaths(nativeFixture(), ops, viewport), 400, 300);
+  const result = detectionResult(candidates, 400, 300, 'vector', [], '', true);
   assert.equal(reviewedResult(undefined), undefined);
   assert.equal(reviewedResult(result), undefined);
-  const [valve, vessel] = result.components;
+  const [valve] = result.components;
   valve.review = 'confirmed';
   assert.deepEqual(reviewedResult(result).components, [valve]);
+  assert.equal(reviewedResult(result).diagnostics, undefined);
   const original = valve.position;
   moveComponent(valve, { x: 1.5, y: -1 });
   assert.equal(valve.review, 'pending');
@@ -125,12 +134,9 @@ test('drafts save decisions, reposition within page bounds and retain reviews ac
   assert.equal(valve.bounds.top, 0);
   assert.deepEqual(valve.detectedPosition, original);
   valve.review = 'rejected';
-  const newScan = structuredClone(result);
-  newScan.method = 'raster';
-  newScan.components[0].position = original;
-  newScan.components[0].bounds = { left: original.x - 0.01, right: original.x + 0.01, top: original.y - 0.01, bottom: original.y + 0.01 };
+  const newScan = detectionResult(candidates, 400, 300, 'raster');
   const saved = JSON.parse(JSON.stringify(reviewedResult(result)));
   const merged = mergeScan(saved, newScan);
   assert.equal(merged.method, 'mixed');
-  assert.deepEqual(merged.components, [valve, vessel]);
+  assert.deepEqual(merged.components, [valve]);
 });

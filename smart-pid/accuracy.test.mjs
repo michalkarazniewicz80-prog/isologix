@@ -116,3 +116,24 @@ test('plotting uses only a unique recognized tag at the clicked point', async ()
   assert.equal(tagAtPoint([{ ...item, review: 'rejected' }], point, padding), '');
   assert.equal(tagAtPoint([item], { x: 0.8, y: 0.5 }, padding), '');
 });
+
+test('PaddleOCR discards tags cut off at an internal tile edge', async () => {
+  const { readPaddleTile } = await import('./paddle.mjs');
+  const page = { width: 7152, height: 5052 };
+  const tile = { x: 0, y: 2860, width: 1024, height: 1024 };
+  const originalDocument = globalThis.document;
+  globalThis.document = { createElement: () => ({
+    getContext: () => ({ translate() {}, rotate() {}, drawImage() {} })
+  }) };
+  try {
+    const ocr = { predict: async canvas => [{ items: canvas === tile ? [
+      { poly: [[975, 74], [1024, 74], [1024, 106], [975, 106]], text: 'X23', score: 0.99 },
+      { poly: [[300, 74], [360, 74], [360, 106], [300, 106]], text: 'PV602', score: 0.99 }
+    ] : [] }] };
+    assert.deepEqual((await readPaddleTile(ocr, tile, tile, [], page)).map(item => item.value), ['PV602']);
+    assert.deepEqual((await readPaddleTile(ocr, tile, { ...tile, x: 6128 }, [], page))
+      .map(item => item.value), ['X23', 'PV602']);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});

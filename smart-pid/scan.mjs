@@ -121,7 +121,7 @@ export async function scanDrawing({ pdfjs, file, image, settings = {}, diagnosti
         }
         if (ocr && !cachedOcr) {
           try {
-            const observations = usePaddle ? await readPaddleTile(ocr, canvas, tile, regions) : await recognizeTile(ocr, canvas, tile);
+            const observations = usePaddle ? await readPaddleTile(ocr, canvas, tile, regions, { width, height }) : await recognizeTile(ocr, canvas, tile);
             for (const observation of observations) text.push(observation);
           }
           catch (error) { await failOcr(error); }

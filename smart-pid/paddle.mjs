@@ -15,7 +15,15 @@ export async function openPaddle() {
   });
 }
 
-export async function readPaddleTile(ocr, canvas, tile, regions) {
+function touchesInternalEdge(points, tile, page) {
+  const pad = 2;
+  const right = tile.x + tile.width, bottom = tile.y + tile.height;
+  return points.some(({ x, y }) =>
+    (tile.x > 0 && x <= tile.x + pad) || (right < page.width && x >= right - pad) ||
+    (tile.y > 0 && y <= tile.y + pad) || (bottom < page.height && y >= bottom - pad));
+}
+
+export async function readPaddleTile(ocr, canvas, tile, regions, page) {
   const observations = [];
   for (const rotation of [0, 90, -90]) {
     let input = canvas;
@@ -33,8 +41,13 @@ export async function readPaddleTile(ocr, canvas, tile, regions) {
     });
     for (const { poly, text, score } of result.items) {
       if (!text.trim() || poly.length !== 4) continue;
-      const [x, y] = poly.reduce(([sx, sy], point) => [sx + point[0] / 4, sy + point[1] / 4], [0, 0]);
-      const position = wordPosition({ x0: x, x1: x, y0: y, y1: y }, tile, rotation);
+      const points = poly.map(([x, y]) => wordPosition({ x0: x, x1: x, y0: y, y1: y }, tile, rotation));
+      // An overlapping tile can read the full tag. A clipped reading can look
+      // valid on its own and otherwise prevent the complete tag from matching.
+      if (touchesInternalEdge(points, tile, page)) continue;
+      const position = points.reduce((center, point) => ({
+        x: center.x + point.x / 4, y: center.y + point.y / 4
+      }), { x: 0, y: 0 });
       const size = Math.hypot(poly[0][0] - poly[3][0], poly[0][1] - poly[3][1]);
       const callout = regions.find(region => Math.hypot(region.x - position.x, region.y - position.y) <= region.radius * 0.85);
       observations.push({ value: text, position, orientation: -rotation, size, quality: score, source: 'ocr',

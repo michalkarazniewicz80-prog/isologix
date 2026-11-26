@@ -1,0 +1,37 @@
+[
+  {
+    "id": "wastewater",
+    "title": "North End Sewage Treatment Plant, wastewater effluent",
+    "url": "https://legacy.winnipeg.ca/finance/findata/matmgt/documents/2015/952-2015/952-2015_Drawing_1-0101Y-A0009-001-R3.pdf",
+    "pdfPage": 1,
+    "width": 2000,
+    "height": 1413,
+    "formats": "X-CV-###, X### XV, X### HV",
+    "samples": [[960, 367, 988, 385], [1078, 976, 1111, 992]],
+    "valves": [
+      [386, 465, "X102 HV"], [619, 420, null], [655, 376, "X-CV-310"],
+      [728, 376, "X310 HV"], [868, 420, "X233 HV"], [974, 376, "X233 XV"],
+      [325, 835, "X231 XV"], [789, 835, "X232 XV"], [1323, 759, "X235 XV"],
+      [1095, 984, "X333 HV"], [1323, 1192, "X234 XV"], [728, 1192, "X320 HV"],
+      [607, 1192, "X-CV-320"], [565, 1213, null], [325, 1284, "X202 HV"]
+    ]
+  },
+  {
+    "id": "plant-155",
+    "title": "MacLean Pumping Station, pump P-M023",
+    "url": "https://legacy.winnipeg.ca/finance/findata/matmgt/documents/2024/54-2024/54-2024_Appendix%20C_Identification%20Standard.pdf",
+    "pdfPage": 155,
+    "width": 2400,
+    "height": 1696,
+    "formats": "HV-M###@, XV-M###@, XV-M####",
+    "samples": [[1305, 477, 1337, 494], [1791, 1228, 1819, 1259], [358, 1247, 385, 1268]],
+    "valves": [
+      [1398, 283, null], [1398, 386, null], [1321, 486, null], [1381, 486, null],
+      [1441, 486, null], [1381, 543, null], [1249, 565, null], [1249, 609, null],
+      [1249, 651, null], [1518, 640, null], [1970, 920, null], [1930, 950, null],
+      [2107, 982, null], [1879, 1010, null], [1930, 1010, null], [1879, 1083, null],
+      [1930, 1083, null], [2007, 1083, null], [1648, 1099, null], [1736, 1099, null],
+      [1249, 1179, null], [1328, 1210, null], [1805, 1244, "XV-M0238"], [371, 1258, "HV-M023A"]
+    ]
+  }
+]

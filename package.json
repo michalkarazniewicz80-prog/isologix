@@ -6,10 +6,16 @@
   "scripts": {
     "start": "netlify dev",
     "dev": "netlify dev",
-    "build": "echo \"No build step\""
+    "test": "node --test smart-pid/*.test.mjs",
+    "build": "node scripts/build-paddle-ocr.mjs"
   },
   "dependencies": {
+    "@paddleocr/paddleocr-js": "0.4.2",
     "@supabase/supabase-js": "^2.7.0",
-    "node-fetch": "^2.6.7"
+    "node-fetch": "^2.6.7",
+    "onnxruntime-web": "1.31.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }
